@@ -21,6 +21,15 @@ define
     FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/fruit.png')}
     ROTTEN_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/rotten_fruit.png')}
     
+    % Mapping from bot IDs to color names for display
+    ID_to_COLOR = converter(
+        1: 'Purple'
+        2: 'Marine'
+        3: 'Green'
+        4: 'Red'
+        5: 'Cyan'
+    )
+    
     % GameObject: Base class for all game entities.
     % Attributes:
     %   - id: Unique identifier for the object
@@ -78,7 +87,7 @@ define
     %   - grow(Size): Increases snake length (currently unimplemented)
     class Snake from GameObject
         attr 'isMoving' 'moveDir' 'targetX' 'targetY'
-        'tail' 'length'
+        'tail' 'length' 'powerup'
 
         % init: Initializes a snake.
         % Inputs: Id (unique identifier), X (pixel x-coord), Y (pixel y-coord)
@@ -89,6 +98,7 @@ define
             'targetY' := Y
             'tail' := body_part(x:X y:Y)|nil
             'length' := 3   % 1 what pixel or what exactly
+            'powerup' := false
         end
 
         % setTarget: Sets the movement direction and calculates target coordinates.
@@ -165,18 +175,139 @@ define
         meth grow(Size)                                         %it is not implemented and i have never used it
             % TODO
             % Increase the length of the snake
-            % Modify the tail attribute
+            % Modify the tail attributes
             % Render the tail (Not in this method)
             'length' := @length + Size
         end
 
+        % shrink: Decreases snake length by half
+        % Immediately removes tail segments (the removed part disappears)
+        meth shrink()
+            NewLength
+        in
+            % Calculate half the current length (minimum 1 to keep the head)
+            NewLength = {Max 1 (@length div 2)}
+            
+            % Simply update length - the move method will naturally trim the tail
+            'length' := NewLength
+            
+            % Force tail to be shortened immediately by creating a new clean list
+            try
+                local CleanTail Count in
+                    Count = {NewCell 0}
+                    CleanTail = {List.takeWhile @tail fun {$ body_part(x:TX y:TY)}
+                        if @Count < (NewLength - 1) andthen {IsDet TX} andthen {IsDet TY} then
+                            Count := @Count + 1
+                            true
+                        else
+                            false
+                        end
+                    end}
+                    'tail' := CleanTail
+                end
+            catch _ then
+                'tail' := nil
+            end
+        end
+
+        % activatePowerup: Activates visual power-up effect
+        meth activatePowerup()
+            'powerup' := true
+        end
+
+        % deactivatePowerup: Deactivates visual power-up effect
+        meth deactivatePowerup()
+            'powerup' := false
+        end
+
         meth render(Buffer)
             % 1. Dessiner la tête
-            {Buffer copy(@sprite 'to': o(@x @y))}
+            try
+                {Buffer copy(@sprite 'to': o(@x @y))}
+            catch _ then skip end
 
-            % 2. Dessiner la queue
-            for body_part(x:TX y:TY) in @tail do
-                {Buffer copy(@sprite 'to': o(TX TY))}
+            % 2. Dessiner la queue (with comprehensive error handling)
+            try
+                local SafeTail in
+                    % Create a safe copy of tail with only valid, bound segments
+                    SafeTail = {List.filter @tail fun {$ Segment}
+                        try
+                            case Segment of body_part(x:TX y:TY) then
+                                try
+                                    {IsDet TX} andthen {IsDet TY} andthen 
+                                    {IsInt TX} andthen {IsInt TY} andthen
+                                    TX >= 0 andthen TX < 1000 andthen
+                                    TY >= 0 andthen TY < 1000
+                                catch _ then false end
+                            else false
+                            end
+                        catch _ then false
+                        end
+                    end}
+                    
+                    % Render only the safe segments with additional error handling per segment
+                    for Segment in SafeTail do
+                        try
+                            case Segment of body_part(x:TX y:TY) then
+                                if {IsDet TX} andthen {IsDet TY} then
+                                    {Buffer copy(@sprite 'to': o(TX TY))}
+                                end
+                            end
+                        catch _ then skip end
+                    end
+                end
+            catch _ then
+                skip  % Ignore any rendering errors
+            end
+        end
+
+        % hasPowerup: Returns whether this snake has an active power-up
+        meth hasPowerup($)
+            @powerup
+        end
+
+        % getX: Returns the current X pixel coordinate
+        meth getX($)
+            @x
+        end
+
+        % getY: Returns the current Y pixel coordinate
+        meth getY($)
+            @y
+        end
+
+        % checkTailCollision: Checks if position (PixelX, PixelY) matches any tail segment
+        % Input: PixelX, PixelY (pixel coordinates)
+        % Output: true if collision detected, false otherwise
+        % Note: Skips checking first 2 segments to avoid false collisions
+        meth checkTailCollision(PixelX PixelY $)
+            % Only check if snake has a meaningful tail (length > 3)
+            if @length =< 3 then
+                false
+            else
+                fun {CheckSegments Segments SkipCount}
+                    case Segments
+                    of nil then false
+                    [] body_part(x:TX y:TY)|Rest then
+                        try
+                            % Skip the first 2 segments to avoid false positives
+                            if SkipCount > 0 then
+                                {CheckSegments Rest SkipCount - 1}
+                            elseif {IsDet TX} andthen {IsDet TY} andthen TX == PixelX andthen TY == PixelY then
+                                true
+                            else
+                                {CheckSegments Rest 0}
+                            end
+                        catch _ then
+                            {CheckSegments Rest 0}
+                        end
+                    else
+                        false
+                    end
+                end
+            in
+                % Skip the first 2 tail segments
+                {CheckSegments @tail 2}
             end
         end
 
@@ -194,6 +325,9 @@ define
             'lastMsg'
             'lastMsgHandle'
             'grid_dim'
+            'powerupIndicators'
+            'snakeScoreHandles'
+            'snakeSpriteHandles'
 
         % init: Initializes the graphics system and creates the game window.
         % Input: GCPort (Port to the Game Controller)
@@ -237,6 +371,9 @@ define
             {@window 'show'}
 
             'gameObjects' := {Dictionary.new}
+            'powerupIndicators' := {Dictionary.new}
+            'snakeScoreHandles' := {Dictionary.new}
+            'snakeSpriteHandles' := {Dictionary.new}
             'ids' := 0
         end
 
@@ -301,6 +438,61 @@ define
             end
         end
 
+        % ateRottenFruit: Handles a snake eating a rotten fruit.
+        % Inputs: X (grid x), Y (grid y), Id (bot identifier)
+        % Makes the snake lose half its tail length (removed part disappears immediately)
+        meth ateRottenFruit(X Y Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot shrink()}                  % reduce la longueur de moitié
+                {self dispawnRottenFruit(X Y)}  % enlève le fruit pourri de la map
+            end
+        end
+
+        % activatePowerup: Activates power-up visual effect for a bot
+        % Input: Id (bot identifier)
+        meth activatePowerup(Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot activatePowerup()}
+            end
+        end
+
+        % deactivatePowerup: Deactivates power-up visual effect for a bot
+        % Input: Id (bot identifier)
+        meth deactivatePowerup(Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot deactivatePowerup()}
+            end
+        end
+
+        % cutSnakeTail: Cuts a snake's tail in half
+        % Input: Id (bot identifier)
+        meth cutSnakeTail(Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot shrink()}
+            end
+        end
+
+        % checkTailCollision: Checks if position (PixelX, PixelY) collides with snake's tail
+        % Input: Id (bot identifier), PixelX, PixelY (pixel coordinates), Result (output)
+        % Output: true if collision detected, false otherwise
+        meth checkTailCollision(Id PixelX PixelY ?Result)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                Result = {Bot checkTailCollision(PixelX PixelY $)}
+            else
+                Result = false
+            end
+        end
+
 
         % buildMap: Constructs the static background from the map.                          %buildmap
         % Input: Map (list of 0s and 1s, where 1=wall, 0=empty)
@@ -333,9 +525,28 @@ define
         meth spawnBot(Type X Y $)
             Bot
             Id = {self genId($)}
+            GridWidth = @grid_dim * 32
+            PanelWidth = 400
+            YPos = 150 + (Id - 1) * 30
+            ScoreHandle
+            HeadSprite
         in
             if Type == 'snake' then
                 Bot = {New Snake init(Id X * 32 Y * 32)}
+                % Load the head sprite for this snake
+                HeadSprite = {QTk.newImage photo(file: CD # '/assets/SNAKE_' # Id # '/body.png')}
+                % Create head sprite icon on the left side of the panel
+                local SpriteHandle in
+                    {@canvas create('image' GridWidth+50 YPos 'image': HeadSprite 'handle': SpriteHandle)}
+                    {Dictionary.put @snakeSpriteHandles Id SpriteHandle}
+                end
+                % Create score display for this snake (positioned to the right of the sprite)
+                {@canvas create('text' GridWidth+200 YPos 
+                    'text': ID_to_COLOR.Id # ': 0' 
+                    'fill': 'white' 
+                    'font': FONT 
+                    'handle': ScoreHandle)}
+                {Dictionary.put @snakeScoreHandles Id ScoreHandle}
             else
                 skip
             end
@@ -373,6 +584,73 @@ define
         meth updateMessageBox(Msg)
             'lastMsg' := Msg
             {@lastMsgHandle set('text': "Message box: " # @lastMsg)}
+        end
+
+        % updateSnakeScore: Updates the score display for a specific snake.
+        % Inputs: Id (bot identifier), Score (new score value)
+        meth updateSnakeScore(Id Score)
+            ScoreHandle = {Dictionary.condGet @snakeScoreHandles Id 'null'}
+        in
+            if ScoreHandle \= 'null' then
+                {ScoreHandle set('text': ID_to_COLOR.Id # ': ' # Score)}
+            end
+        end
+
+        % updateRankings: Reorders all snake displays by score (highest to lowest).
+        % Input: Tracker (record of all bots with their scores)
+        meth updateRankings(Tracker)
+            GridWidth = @grid_dim * 32
+            % Convert tracker to list and sort by score (descending)
+            BotList = {Record.toList Tracker}
+            SortedBots = {Sort BotList fun {$ B1 B2} B1.score > B2.score end}
+            Rank = {NewCell 0}
+            AllBotIds = {Dictionary.keys @snakeScoreHandles}
+        in
+            % First pass: delete all existing items using their handles
+            for BotId in AllBotIds do
+                local 
+                    ScoreHandle = {Dictionary.condGet @snakeScoreHandles BotId unit}
+                    SpriteHandle = {Dictionary.condGet @snakeSpriteHandles BotId unit}
+                in
+                    if ScoreHandle \= unit then
+                        try {ScoreHandle tkClose} catch _ then skip end
+                    end
+                    if SpriteHandle \= unit then
+                        try {SpriteHandle tkClose} catch _ then skip end
+                    end
+                end
+            end
+            
+            % Clear the dictionaries by removing all entries
+            {Dictionary.removeAll @snakeScoreHandles}
+            {Dictionary.removeAll @snakeSpriteHandles}
+            
+            % Now recreate displays in sorted order
+            for Bot in SortedBots do
+                if Bot.alive then
+                    local 
+                        YPos = 150 + (@Rank * 40)
+                        NewScoreHandle
+                        NewSpriteHandle
+                        HeadSprite
+                    in
+                        % Create new sprite and text at the correct position
+                        HeadSprite = {QTk.newImage photo(file: CD # '/assets/SNAKE_' # Bot.id # '/body.png')}
+                        {@canvas create('image' GridWidth+50 YPos 'image': HeadSprite 'handle': NewSpriteHandle)}
+                        {@canvas create('text' GridWidth+200 YPos 
+                            'text': ID_to_COLOR.(Bot.id) # ': ' # Bot.score 
+                            'fill': 'white' 
+                            'font': FONT 
+                            'handle': NewScoreHandle)}
+                        
+                        % Update dictionaries with new handles
+                        {Dictionary.put @snakeScoreHandles Bot.id NewScoreHandle}
+                        {Dictionary.put @snakeSpriteHandles Bot.id NewSpriteHandle}
+                        
+                        Rank := @Rank + 1
+                    end
+                end
+            end
         end
 
         % update: Main rendering loop - updates and draws all game objects.

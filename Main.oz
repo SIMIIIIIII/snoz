@@ -22,6 +22,8 @@ define
     IsWall
     NewPosition
     SpawnRottenFruit
+    SpawnRegularFruit
+    DeactivatePowerup
 
     % Mapping from bot IDs to color names for display
     ID_to_COLOR = converter(
@@ -41,6 +43,15 @@ in
         {Record.forAll Tracker proc {$ Tracked}
             if Tracked.alive then {Send Tracked.port Msg} end
         end}
+    end
+
+    % DeactivatePowerup: Deactivates power-up for a specific bot after timer expires
+    % Inputs:
+    %   - GCPort: Game Controller port
+    %   - Id: Bot identifier
+    %   - ActivationTime: Time when power-up was activated (to verify it's the same activation)
+    proc {DeactivatePowerup GCPort Id ActivationTime}
+        {Send GCPort deactivatePowerup(Id ActivationTime)}
     end
 
     % GameController: Main game controller function managing game state and logic.
@@ -82,17 +93,21 @@ in
         fun {MoveTo moveTo(Id Dir)}
             Pos NewTracker NewBot NewPos
             AliveList WinnerBot WinnerId
-            Last 
+            Last HasPowerup
         in
             if State.tracker.Id.alive == true then
                 
                 Pos = pos('x':State.tracker.Id.x  'y':State.tracker.Id.y)
+                HasPowerup = State.tracker.Id.powerup == 'invincible'
 
-                if {IsWall Pos Dir State} == false then
+                if {IsWall Pos Dir State} == false orelse HasPowerup then
                     {State.gui moveBot(Id Dir)}
                     NewPos = {NewPosition Pos Dir}
                     NewBot = {Adjoin State.tracker.Id bot(x:NewPos.x y:NewPos.y)}
                     NewTracker = {AdjoinAt State.tracker Id NewBot}
+                    if HasPowerup andthen {IsWall Pos Dir State} then
+                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' passed through wall!')}
+                    end
                     
                 else
                     % Collision avec un mur → le bot meurt
@@ -119,10 +134,8 @@ in
                 {State.gui updateMessageBox(ID_to_COLOR.WinnerId # ' wins the game')}
                 {System.show 'Game Over! Winner: ' # ID_to_COLOR.WinnerId #
                              ', Final Score: ' # State.score}
-                thread
-                    {Delay 10000}     % attendre 10 secondes
-                    {Application.exit 0}
-                end
+                {Delay 1000}
+                {Application.exit 0}
 
             end
 
@@ -214,6 +227,66 @@ in
             end
         end
 
+        % CheckSnakeCollision: Checks if a snake collided with another snake's body
+        % Returns: bot ID if collision detected, none otherwise
+        fun {CheckSnakeCollision X Y MovingSnakeId Tracker}
+            fun {CheckAllBots BotIds}
+                case BotIds
+                of nil then none
+                [] BotId|Rest then
+                    local Bot in
+                        Bot = Tracker.BotId
+                        if Bot.alive andthen BotId \= MovingSnakeId then
+                            % Check if position matches this snake's position
+                            if Bot.x == X andthen Bot.y == Y then
+                                BotId
+                            else
+                                {CheckAllBots Rest}
+                            end
+                        else
+                            {CheckAllBots Rest}
+                        end
+                    end
+                end
+            end
+        in
+            {CheckAllBots {Record.arity Tracker}}
+        end
+
+        % CheckAllTailCollisions: Checks if position (X,Y) collides with any snake's tail
+        % Returns: bot ID if collision detected, none otherwise
+        % Uses a non-blocking approach by checking through GUI with minimal overhead
+        fun {CheckAllTailCollisions X Y MovingSnakeId Tracker}
+            PixelX = X * 32
+            PixelY = Y * 32
+            fun {CheckAllBots BotIds}
+                case BotIds
+                of nil then none
+                [] BotId|Rest then
+                    local Bot Result in
+                        Bot = Tracker.BotId
+                        if Bot.alive andthen Bot.type == 'snake' then
+                            % Check collision with this snake's tail using GUI
+                            try
+                                Result = {State.gui checkTailCollision(BotId PixelX PixelY $)}
+                                if Result then
+                                    BotId
+                                else
+                                    {CheckAllBots Rest}
+                                end
+                            catch _ then
+                                {CheckAllBots Rest}
+                            end
+                        else
+                            {CheckAllBots Rest}
+                        end
+                    end
+                end
+            end
+        in
+            {CheckAllBots {Record.arity Tracker}}
+        end
+
         % MovedTo: Handles notifications that a bot has finished moving.
         % Input: movedTo(Id Type X Y) message
         %   - Id: Bot that moved
@@ -221,53 +294,173 @@ in
         %   - X, Y: New grid coordinates
         % Output: Updated game controller instance
         fun {MovedTo movedTo(Id Type X Y)}
-            I NewState
+            I NewState NewBot NewTracker
         in
             if State.tracker.Id.alive == true then
                 I = Y * Input.dim + X
                 {Wait State.tracker}
 
-                if Type == 'snake' then
-                    if {HasFeature State.items I} andthen
-                       {And State.items.I.alive State.tracker.Id.alive} then
-                        if {Label State.items.I} == 'fruit' then
-                            local TempState1 TempState2 FruitsEaten in
-                                % update score and message box
-                                {State.gui updateScore(State.score + 1)}
-                                {State.gui updateMessageBox(ID_to_COLOR.Id # ' ate a fruit')}
+                % Check for snake-to-snake head collision
+                local CollidedSnakeId HasPowerup VictimBot VictimTracker TempState in
+                    HasPowerup = State.tracker.Id.powerup == 'invincible'
+                    CollidedSnakeId = {CheckSnakeCollision X Y Id State.tracker}
+                    
+                    if CollidedSnakeId \= none andthen {Not HasPowerup} then
+                        % Non-powered snake dies when hitting another snake's head
+                        {State.gui dispawnBot(Id)}
+                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' hit ' # ID_to_COLOR.CollidedSnakeId # '!')}
+                        {Broadcast State.tracker movedTo(Id State.tracker.Id.type X Y)}
+                        {Send State.tracker.Id.port invalidAction()}
+                        NewBot = {Adjoin State.tracker.Id bot(alive:false)}
+                        NewTracker = {AdjoinAt State.tracker Id NewBot}
+                        NewState = {AdjoinAt State 'tracker' NewTracker}
+                    elseif HasPowerup andthen CollidedSnakeId \= none then
+                        % Powered snake kills the other snake
+                        {State.gui dispawnBot(CollidedSnakeId)}
+                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' destroyed ' # ID_to_COLOR.CollidedSnakeId # '!')}
+                        {Broadcast State.tracker movedTo(CollidedSnakeId State.tracker.CollidedSnakeId.type State.tracker.CollidedSnakeId.x State.tracker.CollidedSnakeId.y)}
+                        {Send State.tracker.CollidedSnakeId.port invalidAction()}
+                        VictimBot = {Adjoin State.tracker.CollidedSnakeId bot(alive:false)}
+                        VictimTracker = {AdjoinAt State.tracker CollidedSnakeId VictimBot}
+                        TempState = {AdjoinAt State 'tracker' VictimTracker}
+                        
+                        % Continue with normal processing for the powered snake (can eat fruits, etc.)
+                        if Type == 'snake' then
+                            if {HasFeature TempState.items I} andthen
+                               {And TempState.items.I.alive TempState.tracker.Id.alive} then
+                                if {Label TempState.items.I} == 'fruit' then
+                                    local TempState1 TempState2 FruitsEaten UpdatedBot UpdatedTracker NewBotScore in
+                                        % update score and message box
+                                        {State.gui updateScore(TempState.score + 1)}
+                                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' ate a fruit')}
 
-                                % remove the fruit (this will also spawn a new regular fruit)
-                                {State.gui dispawnFruit(X Y)}
+                                        % remove the fruit (this will also spawn a new regular fruit)
+                                        {State.gui dispawnFruit(X Y)}
 
-                                % update the state
-                                TempState1 = {AdjoinAt State 'score' State.score+1}
-                                TempState2 = {AdjoinAt TempState1 'active' State.active+1}
+                                        % update the state and bot score
+                                        NewBotScore = TempState.tracker.Id.score + 1
+                                        UpdatedBot = {Adjoin TempState.tracker.Id bot(score:NewBotScore)}
+                                        UpdatedTracker = {AdjoinAt TempState.tracker Id UpdatedBot}
+                                        TempState1 = {AdjoinAt TempState 'score' TempState.score+1}
+                                        TempState2 = {AdjoinAt TempState1 'tracker' UpdatedTracker}
+                                        
+                                        % Update rankings display
+                                        {State.gui updateRankings(UpdatedTracker)}
 
-                                % Grow snake
-                                {State.gui ateFruit(X Y Id)}
+                                        % Grow snake
+                                        {State.gui ateFruit(X Y Id)}
 
-                                % Check if we should spawn a rotten fruit (every 2 fruits)
-                                FruitsEaten = if {HasFeature State 'fruitsEaten'} then State.fruitsEaten + 1 else 1 end
-                                if FruitsEaten mod 2 == 0 then
-                                    {SpawnRottenFruit State.gui}
+                                        % Check if we should spawn a rotten fruit (every 2 fruits)
+                                        FruitsEaten = if {HasFeature TempState 'fruitsEaten'} then TempState.fruitsEaten + 1 else 1 end
+                                        if FruitsEaten mod 2 == 0 then
+                                            {SpawnRottenFruit State.gui}
+                                        end
+                                        NewState = {AdjoinAt TempState2 'fruitsEaten' FruitsEaten}
+                                    end
+                                elseif {Label TempState.items.I} == 'rottenfruit' then
+                                    % Snake ate a rotten fruit - lose half of tail length and get power-up
+                                    local UpdatedBot ActivationTime UpdatedTracker TempState2 GCPort in
+                                        ActivationTime = {OS.rand}
+                                        GCPort = State.gcPort
+                                        UpdatedBot = {Adjoin TempState.tracker.Id bot(powerup:'invincible' powerupTime:ActivationTime)}
+                                        UpdatedTracker = {AdjoinAt TempState.tracker Id UpdatedBot}
+                                        TempState2 = {AdjoinAt TempState 'tracker' UpdatedTracker}
+                                        
+                                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' got invincibility!')}
+                                        {State.gui ateRottenFruit(X Y Id)}
+                                        {State.gui activatePowerup(Id)}
+                                        
+                                        % Spawn 2 regular fruits as a reward
+                                        {SpawnRegularFruit State.gui}
+                                        
+                                        % Schedule power-up deactivation after 5 seconds in a separate thread
+                                        thread
+                                            {Delay 5000}
+                                            {Send GCPort deactivatePowerup(Id ActivationTime)}
+                                        end
+                                        
+                                        NewState = TempState2
+                                    end
+                                else
+                                    NewState = TempState
                                 end
-                                NewState = {AdjoinAt TempState2 'fruitsEaten' FruitsEaten}
+                            else
+                                NewState = TempState
                             end
-                        elseif {Label State.items.I} == 'rottenfruit' then
-                            % Snake ate a rotten fruit - just remove it for now
-                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' ate a rotten fruit')}
-                            {State.gui dispawnRottenFruit(X Y)}
-                            NewState = State
+                        else
+                            NewState = TempState
+                        end
+                        {Broadcast State.tracker movedTo(Id Type X Y)}
+                    else
+                        % No collision, normal processing
+                        if Type == 'snake' then
+                            if {HasFeature State.items I} andthen
+                               {And State.items.I.alive State.tracker.Id.alive} then
+                                if {Label State.items.I} == 'fruit' then
+                                    local TempState1 TempState2 FruitsEaten UpdatedBot UpdatedTracker NewBotScore in
+                                        % update score and message box
+                                        {State.gui updateScore(State.score + 1)}
+                                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' ate a fruit')}
+
+                                        % remove the fruit (this will also spawn a new regular fruit)
+                                        {State.gui dispawnFruit(X Y)}
+
+                                        % update the state and bot score
+                                        NewBotScore = State.tracker.Id.score + 1
+                                        UpdatedBot = {Adjoin State.tracker.Id bot(score:NewBotScore)}
+                                        UpdatedTracker = {AdjoinAt State.tracker Id UpdatedBot}
+                                        TempState1 = {AdjoinAt State 'score' State.score+1}
+                                        TempState2 = {AdjoinAt TempState1 'tracker' UpdatedTracker}
+                                        
+                                        % Update rankings display
+                                        {State.gui updateRankings(UpdatedTracker)}
+
+                                        % Grow snake
+                                        {State.gui ateFruit(X Y Id)}
+
+                                        % Check if we should spawn a rotten fruit (every 2 fruits)
+                                        FruitsEaten = if {HasFeature State 'fruitsEaten'} then State.fruitsEaten + 1 else 1 end
+                                        if FruitsEaten mod 2 == 0 then
+                                            {SpawnRottenFruit State.gui}
+                                        end
+                                        NewState = {AdjoinAt TempState2 'fruitsEaten' FruitsEaten}
+                                    end
+                                elseif {Label State.items.I} == 'rottenfruit' then
+                                    % Snake ate a rotten fruit - lose half of tail length and get power-up
+                                    local UpdatedBot ActivationTime UpdatedTracker TempState GCPort in
+                                        ActivationTime = {OS.rand}
+                                        GCPort = State.gcPort
+                                        UpdatedBot = {Adjoin State.tracker.Id bot(powerup:'invincible' powerupTime:ActivationTime)}
+                                        UpdatedTracker = {AdjoinAt State.tracker Id UpdatedBot}
+                                        TempState = {AdjoinAt State 'tracker' UpdatedTracker}
+                                        
+                                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' got invincibility!')}
+                                        {State.gui ateRottenFruit(X Y Id)}
+                                        {State.gui activatePowerup(Id)}
+                                        
+                                        % Spawn 2 regular fruits as a reward
+                                        {SpawnRegularFruit State.gui}
+                                        
+                                        % Schedule power-up deactivation after 5 seconds in a separate thread
+                                        thread
+                                            {Delay 5000}
+                                            {Send GCPort deactivatePowerup(Id ActivationTime)}
+                                        end
+                                        
+                                        NewState = TempState
+                                    end
+                                else
+                                    NewState = State
+                                end
+                            else
+                                NewState = State
+                            end
                         else
                             NewState = State
                         end
-                    else
-                        NewState = State
+                        {Broadcast State.tracker movedTo(Id Type X Y)}
                     end
-                else
-                    NewState = State
                 end
-                {Broadcast State.tracker movedTo(Id Type X Y)}
             else
                 NewState = State
             end
@@ -294,6 +487,25 @@ in
             {Broadcast TeamTracker tellTeam(Id Msg)}
             {GameController State}
         end
+
+        % DeactivatePowerupMsg: Handles power-up deactivation after timer expires
+        % Input: deactivatePowerup(Id ActivationTime) message
+        fun {DeactivatePowerupMsg deactivatePowerup(Id ActivationTime)}
+            NewBot NewTracker
+        in
+            % Only deactivate if this is the same power-up activation (not a newer one)
+            if {HasFeature State.tracker Id} andthen 
+               State.tracker.Id.powerup == 'invincible' andthen
+               State.tracker.Id.powerupTime == ActivationTime then
+                NewBot = {Adjoin State.tracker.Id bot(powerup:none powerupTime:0)}
+                NewTracker = {AdjoinAt State.tracker Id NewBot}
+                {State.gui deactivatePowerup(Id)}
+                {State.gui updateMessageBox(ID_to_COLOR.Id # ' lost invincibility')}
+                {GameController {AdjoinAt State 'tracker' NewTracker}}
+            else
+                {GameController State}
+            end
+        end
     in
         % Message dispatcher function
         fun {$ Msg}
@@ -306,6 +518,7 @@ in
                 'rottenFruitSpawned':RottenFruitSpawned
                 'rottenFruitDispawned':RottenFruitDispawned
                 'tellTeam':TellTeam
+                'deactivatePowerup':DeactivatePowerupMsg
             )
         in
             if {HasFeature Interface Dispatch} then
@@ -330,15 +543,39 @@ in
         end
     end
 
+    % SpawnRegularFruit: Spawns 2 regular fruits at random empty locations
+    % Input: GUI - Graphics object to render the fruits
+    proc {SpawnRegularFruit GUI}
+        proc {SpawnOne}
+            X Y
+        in
+            % Spawn inside playable area (avoid walls at borders)
+            X = 1 + ({OS.rand} mod (Input.dim - 2))
+            Y = 1 + ({OS.rand} mod (Input.dim - 2))
+            {GUI spawnFruit(X Y)}
+        end
+    in
+        {SpawnOne}
+        {SpawnOne}
+        
+    end
+
     % SpawnRottenFruit: Spawns a rotten fruit at a random empty location on the grid
     % Input: GUI - Graphics object to render the fruit
+    % Spawns 3 rotten fruits
     proc {SpawnRottenFruit GUI}
-        X Y
+        proc {SpawnOne}
+            X Y
+        in
+            % Spawn inside playable area (avoid walls at borders)
+            X = 1 + ({OS.rand} mod (Input.dim - 2))
+            Y = 1 + ({OS.rand} mod (Input.dim - 2))
+            {GUI spawnRottenFruit(X Y)}
+        end
     in
-        % Spawn inside playable area (avoid walls at borders)
-        X = 1 + ({OS.rand} mod (Input.dim - 2))
-        Y = 1 + ({OS.rand} mod (Input.dim - 2))
-        {GUI spawnRottenFruit(X Y)}
+        {SpawnOne}
+        {SpawnOne}
+        {SpawnOne}
     end
 
     % IsWall: Checks if moving in a direction would hit a wall.
@@ -387,7 +624,8 @@ in
                         {BotPortInner T GCPort Map GUI
                             {AdjoinAt Tracker Id
                                 bot(id:Id type:Type port:BotPort
-                                    alive:true score:0 x:X y:Y lastDir:none)}}
+                                    alive:true score:0 x:X y:Y lastDir:none
+                                    powerup:none powerupTime:0)}}
                     else
                         {BotPortInner T GCPort Map GUI Tracker}
                     end
