@@ -25,6 +25,7 @@ define
     SpawnRottenFruit
     SpawnRegularFruit
     SpawnBonusFruit
+    SpawnToxicFruit
     SpawnShield
     SpawnHealthFruit
     DeactivatePowerup
@@ -119,27 +120,40 @@ in
         fun {MoveTo moveTo(Id Dir)}
             Pos NewTracker NewBot NewPos
             AliveList WinnerBot WinnerId
-            Last HasPowerup HasShield
+            Last HasPowerup HasShield HasToxicEffect ActualDir
         in
             if State.tracker.Id.alive == true then
                 
                 Pos = pos('x':State.tracker.Id.x  'y':State.tracker.Id.y)
                 HasPowerup = State.tracker.Id.powerup == 'invincible'
                 HasShield = State.tracker.Id.shield == true
+                HasToxicEffect = if {HasFeature State.tracker.Id 'toxicEffect'} then State.tracker.Id.toxicEffect else false end
+                
+                % Invert direction if toxic effect is active (north<->south, east<->west)
+                ActualDir = if HasToxicEffect then
+                                case Dir
+                                of 'north' then 'south'
+                                [] 'south' then 'north'
+                                [] 'east' then 'west'
+                                [] 'west' then 'east'
+                                end
+                            else
+                                Dir
+                            end
 
-                if {IsWall Pos Dir State} == false orelse HasPowerup then
-                    {State.gui moveBot(Id Dir)}
-                    NewPos = {NewPosition Pos Dir}
+                if {IsWall Pos ActualDir State} == false orelse HasPowerup then
+                    {State.gui moveBot(Id ActualDir)}
+                    NewPos = {NewPosition Pos ActualDir}
                     NewBot = {Adjoin State.tracker.Id bot(x:NewPos.x y:NewPos.y)}
                     NewTracker = {AdjoinAt State.tracker Id NewBot}
-                    if HasPowerup andthen {IsWall Pos Dir State} then
+                    if HasPowerup andthen {IsWall Pos ActualDir State} then
                         {State.gui updateMessageBox(ID_to_COLOR.Id # ' passed through wall!')}
                     end
                     
                 elseif HasShield then
                     % Shield protects from wall collision - shield disappears after use
-                    {State.gui moveBot(Id Dir)}
-                    NewPos = {NewPosition Pos Dir}
+                    {State.gui moveBot(Id ActualDir)}
+                    NewPos = {NewPosition Pos ActualDir}
                     NewBot = {Adjoin State.tracker.Id bot(x:NewPos.x y:NewPos.y shield:false)}
                     NewTracker = {AdjoinAt State.tracker Id NewBot}
                     {State.gui deactivateShieldVisual(Id)}
@@ -292,6 +306,30 @@ in
             {GameController {AdjoinAt State 'items' NewItems}}
         end
 
+        % ToxicFruitSpawned: Handles toxic fruit spawning events.
+        % Input: toxicFruitSpawned(X Y) message
+        %   - X, Y: Grid coordinates of new toxic fruit
+        % Output: Updated game controller instance
+        % Adds toxic fruit to items tracker and broadcasts to all bots
+        fun {ToxicFruitSpawned toxicFruitSpawned(X Y)}
+            Index NewItems
+        in
+            Index = Y * Input.dim + X
+            if {HasFeature State 'items'} then
+                NewItems = {Adjoin State.items
+                        items(Index: toxicfruit('alive': true)
+                              'nTfruits': if {HasFeature State.items 'nTfruits'} then State.items.nTfruits + 1 else 1 end)}
+            else
+                NewItems = items(Index: toxicfruit('alive':true)
+                                'nTfruits':1
+                                'nfruits':0
+                                'nRfruits':0
+                                'nBfruits':0)
+            end
+            {Broadcast State.tracker toxicFruitSpawned(X Y)}
+            {GameController {AdjoinAt State 'items' NewItems}}
+        end
+
         % FruitDispawned: Handles fruit despawning events.
         % Input: fruitDispawned(X Y) message
         %   - X, Y: Grid coordinates of fruit being removed
@@ -344,6 +382,25 @@ in
                         items(I:bonusfruit('alive':false)
                               'nBfruits':State.items.nBfruits - 1)}
                 {Broadcast State.tracker bonusFruitDispawned(X Y)}
+                {GameController {AdjoinAt State 'items' NewItems}}
+            else
+                {GameController State}
+            end
+        end
+
+        % ToxicFruitDispawned: Handles toxic fruit despawning events.
+        % Input: toxicFruitDispawned(X Y) message
+        %   - X, Y: Grid coordinates of toxic fruit being removed
+        % Output: Updated game controller instance
+        fun {ToxicFruitDispawned toxicFruitDispawned(X Y)}
+            I NewItems
+        in
+            I = Y * Input.dim + X
+            if {HasFeature State.items I} andthen State.items.I.alive == true then
+                NewItems = {Adjoin State.items
+                        items(I:toxicfruit('alive':false)
+                              'nTfruits':State.items.nTfruits - 1)}
+                {Broadcast State.tracker toxicFruitDispawned(X Y)}
                 {GameController {AdjoinAt State 'items' NewItems}}
             else
                 {GameController State}
@@ -773,6 +830,9 @@ in
                                         if FruitsEaten mod 5 == 0 then
                                             {SpawnBonusFruit State.gui State.map}
                                         end
+                                        if FruitsEaten mod 8 == 0 then
+                                            {SpawnToxicFruit State.gui State.map}
+                                        end
                                         if FruitsEaten mod 10 == 0 then
                                             {SpawnHealthFruit State.gui State.map}
                                         end
@@ -867,6 +927,46 @@ in
                                         
                                         NewState = TempState
                                     end
+                                elseif {Label State.items.I} == 'toxicfruit' then
+                                    % Snake ate a toxic fruit - controls inverted for 5 seconds (unless shielded)
+                                    local HasShield in
+                                        HasShield = State.tracker.Id.shield == true
+                                        
+                                        if HasShield then
+                                            % Shield protects from toxic effect
+                                            local UpdatedBot UpdatedTracker TempState in
+                                                UpdatedBot = {Adjoin State.tracker.Id bot(shield:false)}
+                                                UpdatedTracker = {AdjoinAt State.tracker Id UpdatedBot}
+                                                TempState = {AdjoinAt State 'tracker' UpdatedTracker}
+                                                
+                                                {State.gui updateMessageBox(ID_to_COLOR.Id # ' shield blocked toxic effect!')}
+                                                {State.gui ateToxicFruit(X Y Id)}
+                                                {State.gui deactivateShieldVisual(Id)}
+                                                
+                                                NewState = TempState
+                                            end
+                                        else
+                                            % No shield - apply toxic effect
+                                            local UpdatedBot ActivationTime UpdatedTracker TempState GCPort in
+                                                ActivationTime = {OS.rand}
+                                                GCPort = State.gcPort
+                                                UpdatedBot = {Adjoin State.tracker.Id bot(toxicEffect:true toxicEffectTime:ActivationTime)}
+                                                UpdatedTracker = {AdjoinAt State.tracker Id UpdatedBot}
+                                                TempState = {AdjoinAt State 'tracker' UpdatedTracker}
+                                                
+                                                {State.gui updateMessageBox(ID_to_COLOR.Id # ' ate TOXIC fruit! Controls inverted!')}
+                                                {State.gui ateToxicFruit(X Y Id)}
+                                                
+                                                % Schedule toxic effect deactivation after 5 seconds
+                                                thread
+                                                    {Delay 5000}
+                                                    {Send GCPort deactivateToxicEffect(Id ActivationTime)}
+                                                end
+                                                
+                                                NewState = TempState
+                                            end
+                                        end
+                                    end
                                 else
                                     NewState = State
                                 end
@@ -925,6 +1025,25 @@ in
             end
         end
 
+        % DeactivateToxicEffectMsg: Handles toxic effect deactivation after timer expires
+        % Input: deactivateToxicEffect(Id ActivationTime) message
+        fun {DeactivateToxicEffectMsg deactivateToxicEffect(Id ActivationTime)}
+            NewBot NewTracker
+        in
+            % Only deactivate if this is the same toxic effect activation (not a newer one)
+            if {HasFeature State.tracker Id} andthen
+               {HasFeature State.tracker.Id 'toxicEffect'} andthen
+               State.tracker.Id.toxicEffect == true andthen
+               State.tracker.Id.toxicEffectTime == ActivationTime then
+                NewBot = {Adjoin State.tracker.Id bot(toxicEffect:false toxicEffectTime:0)}
+                NewTracker = {AdjoinAt State.tracker Id NewBot}
+                {State.gui updateMessageBox(ID_to_COLOR.Id # ' controls back to normal')}
+                {GameController {AdjoinAt State 'tracker' NewTracker}}
+            else
+                {GameController State}
+            end
+        end
+
         % KeyPressed: Handles keyboard input for human player
         % Input: keyPressed(Direction) message where Direction is 'north', 'south', 'east', or 'west'
         fun {KeyPressed keyPressed(Dir)}
@@ -948,12 +1067,15 @@ in
                 'rottenFruitDispawned':RottenFruitDispawned
                 'bonusFruitSpawned':BonusFruitSpawned
                 'bonusFruitDispawned':BonusFruitDispawned
+                'toxicFruitSpawned':ToxicFruitSpawned
+                'toxicFruitDispawned':ToxicFruitDispawned
                 'shieldSpawned':ShieldSpawned
                 'shieldDispawned':ShieldDispawned
                 'healthFruitSpawned':HealthFruitSpawned
                 'healthFruitDispawned':HealthFruitDispawned
                 'tellTeam':TellTeam
                 'deactivatePowerup':DeactivatePowerupMsg
+                'deactivateToxicEffect':DeactivateToxicEffectMsg
                 'keyPressed':KeyPressed
             )
         in
@@ -1060,6 +1182,15 @@ in
         Pos = {FindValidSpawnPosition Map}
     in
         {GUI spawnHealthFruit(Pos.x Pos.y)}
+    end
+
+    % SpawnToxicFruit: Spawns a toxic fruit at a random empty location
+    % Input: GUI - Graphics object to render the toxic fruit, Map - Game map to check for walls
+    % Spawns 1 toxic fruit (inverts directional controls for 5 seconds)
+    proc {SpawnToxicFruit GUI Map}
+        Pos = {FindValidSpawnPosition Map}
+    in
+        {GUI spawnToxicFruit(Pos.x Pos.y)}
     end
 
     % IsWall: Checks if moving in a direction would hit a wall.

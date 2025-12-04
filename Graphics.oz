@@ -21,6 +21,7 @@ define
     FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/fruit.png')}
     ROTTEN_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/rotten_fruit.png')}
     BONUS_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/bonus_fruit.png')}
+    TOXIC_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/toxic_fruit.png')}
     SHIELD_SPRITE = {QTk.newImage photo(file: CD # '/assets/shield.png')}
     HEALTH_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/health_fruit.png')}
     
@@ -528,6 +529,29 @@ define
             {Send @gcPort bonusFruitDispawned(X Y)}
         end
 
+        % spawnToxicFruit: Spawns a toxic fruit at the given grid coordinates.
+        % Inputs: X (grid x), Y (grid y)
+        % Draws toxic fruit on background and notifies Game Controller
+        meth spawnToxicFruit(X Y)
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(TOXIC_FRUIT_SPRITE 'to': o(PX PY))}
+            {Send @gcPort toxicFruitSpawned(X Y)}
+        end
+
+        % dispawnToxicFruit: Removes a toxic fruit from the grid.
+        % Inputs: X (grid x), Y (grid y)
+        meth dispawnToxicFruit(X Y)
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(PX PY))}
+            {Send @gcPort toxicFruitDispawned(X Y)}
+        end
+
         % ateFruit: Handles a snake eating a fruit.
         % Inputs: X (grid x), Y (grid y), Id (bot identifier)                             %should use this i think to increase its length
         % Makes the snake grow by 1 segment
@@ -548,7 +572,18 @@ define
         in
             if Bot \= 'null' then
                 {Bot shrink()}                  % reduce la longueur de moitié
-                {self dispawnRottenFruit(X Y)}  % enlève le fruit pourri de la map
+                {self dispawnRottenFruit(X Y)}  % enlève le fruit pourri
+            end
+        end
+
+        % ateToxicFruit: Handles a snake eating a toxic fruit.
+        % Inputs: X (grid x), Y (grid y), Id (bot identifier)
+        % No visual effect - just removes the fruit (effect handled in Main.oz)
+        meth ateToxicFruit(X Y Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {self dispawnToxicFruit(X Y)}  % enlève le fruit toxique de la map
             end
         end
 

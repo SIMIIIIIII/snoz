@@ -11,13 +11,9 @@ export
 define
     % Grid dimension (Dim x Dim grid)
     Dim = 24
-
-    % Obstacle density (0.0 to 1.0, where 0.0 = no obstacles, 1.0 = all obstacles)
-    % Recommended value: 0.15 to 0.25 for balanced gameplay
-    ObstacleDensity = 0.02
-
-    % List of bots to spawn in the game.
-    % Each bot is defined as: bot(Type TemplateAgent X Y)
+    
+    ObstacleDensity = 0.05
+    
     Bots = [
         bot('snake' 'AgentBlank' (Dim div 2) (Dim div 4))        % haut-centre (Purple)
         bot('snake' 'AgentBlank' (Dim div 2) (3 * Dim div 4))    % bas-centre (Marine)
