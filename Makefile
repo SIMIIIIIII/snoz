@@ -19,6 +19,7 @@ compile:
 	$(OZC) -c Input.oz -o "compiled/Input.ozf"
 	$(OZC) -c AgentManager.oz -o "compiled/AgentManager.ozf"
 	$(OZC) -c AgentBlank.oz -o "compiled/AgentBlank.ozf"
+	$(OZC) -c AgentHuman.oz -o "compiled/AgentHuman.ozf"
 	$(OZC) -c Graphics.oz -o "compiled/Graphics.ozf"
 	$(OZC) -c Main.oz -o "compiled/Main.ozf"
 run:

@@ -19,11 +19,11 @@ define
     % List of bots to spawn in the game.
     % Each bot is defined as: bot(Type TemplateAgent X Y)
     Bots = [
-        bot('snake' 'AgentBlank' (Dim div 2) (Dim div 4))        % haut-centre
-        bot('snake' 'AgentBlank' (Dim div 2) (3 * Dim div 4))    % bas-centre
-        bot('snake' 'AgentBlank' (Dim div 4) (Dim div 2))        % centre-gauche
-        bot('snake' 'AgentBlank' (3 * Dim div 4) (Dim div 2))    % centre-droit
-        bot('snake' 'AgentBlank' (Dim div 2) (Dim div 2))        % centre exact
+        bot('snake' 'AgentBlank' (Dim div 2) (Dim div 4))        % haut-centre (Purple)
+        bot('snake' 'AgentBlank' (Dim div 2) (3 * Dim div 4))    % bas-centre (Marine)
+        bot('snake' 'AgentBlank' (Dim div 4) (Dim div 2))        % centre-gauche (Green)
+        bot('snake' 'AgentHuman' (3 * Dim div 4) (Dim div 2))    % centre-droit (Red - HUMAN PLAYER)
+        bot('snake' 'AgentBlank' (Dim div 2) (Dim div 2))        % centre exact (Cyan)
     ]
 
     % Random number generator state

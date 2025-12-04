@@ -1,0 +1,946 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    SNOZ GAME - SUGGESTIONS DE FONCTIONNALITÉS                ║
+║                         Idées d'améliorations possibles                      ║
+║                                                                              ║
+║                            Date: 4 décembre 2025                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+TABLE DES MATIÈRES:
+==================
+1. FONCTIONNALITÉS DE GAMEPLAY
+2. AMÉLIORATION DE L'IA
+3. STATISTIQUES ET PROGRESSION
+4. AMÉLIORATIONS VISUELLES
+5. AMÉLIORATIONS DE LA CARTE
+6. FONCTIONNALITÉS STRATÉGIQUES
+7. AUDIO ET FEEDBACK
+8. COMPÉTITION ET REPLAY
+9. RECOMMANDATIONS PRIORITAIRES
+
+
+═══════════════════════════════════════════════════════════════════════════════
+1. FONCTIONNALITÉS DE GAMEPLAY
+═══════════════════════════════════════════════════════════════════════════════
+
+1.1 FRUITS SPÉCIAUX AVEC EFFETS VARIÉS
+---------------------------------------
+Description:
+  Ajouter différents types de fruits avec des effets uniques pour enrichir
+  le gameplay et créer des situations tactiques intéressantes.
+
+Types de fruits suggérés:
+  🍊 FRUIT DE VITESSE
+     - Effet: Double la vitesse de déplacement du serpent
+     - Durée: 3-5 secondes
+     - Couleur: Orange
+     - Spawn: 1 toutes les 5 fruits réguliers mangés
+     - Implémentation: Modifier le délai d'animation (2 pixels/frame au lieu de 4)
+  
+  🍇 FRUIT TOXIQUE
+     - Effet: Inverse temporairement les contrôles directionnels
+     - Durée: 5 secondes
+     - Couleur: Violet
+     - Spawn: 1 toutes les 10 fruits réguliers mangés
+     - Implémentation: Mapper north->south, east->west dans la fonction MoveTo
+  
+  💎 FRUIT BONUS
+     - Effet: +5 points au lieu de +1
+     - Couleur: Bleu brillant
+     - Spawn: 1 toutes les 8 fruits réguliers mangés
+     - Implémentation: Modifier la logique de score dans MovedTo
+  
+  ⭐ FRUIT MULTIPLICATEUR
+     - Effet: Double tous les points gagnés pendant 10 secondes
+     - Couleur: Doré
+     - Spawn: 1 toutes les 15 fruits réguliers mangés
+     - Implémentation: Ajouter un flag 'scoreMultiplier' dans le tracker
+
+Avantages:
+  ✓ Gameplay plus varié et imprévisible
+  ✓ Encourage la prise de risque
+  ✓ Crée des moments mémorables
+  ✓ Facile à implémenter (réutilise le système de fruits existant)
+
+Difficulté d'implémentation: ⭐⭐⭐ (Moyenne)
+
+
+1.2 POWER-UPS ADDITIONNELS
+---------------------------
+Description:
+  Étendre le système de power-ups existant avec de nouveaux effets.
+
+Types de power-ups suggérés:
+  🛡️ BOUCLIER
+     - Effet: Protège d'une seule collision mortelle
+     - Disparaît après usage
+     - Visuel: Cercle bleu autour de la tête
+     - Spawn: Item spécial sur la carte (pas lié aux fruits)
+  
+  ⚡ SUPER-VITESSE
+     - Effet: Déplacement 2x plus rapide
+     - Durée: 4 secondes
+     - Visuel: Traînée jaune derrière le serpent
+  
+  👁️ VISION NOCTURNE
+     - Effet: Révèle où les prochains fruits vont apparaître
+     - Durée: 8 secondes
+     - Visuel: Contours lumineux autour des zones de spawn
+  
+  🧲 AIMANT
+     - Effet: Attire automatiquement les fruits dans un rayon de 3 cases
+     - Durée: 6 secondes
+     - Implémentation: Auto-mouvement vers fruits proches
+
+Implémentation:
+  - Réutiliser le système powerup/powerupTime existant
+  - Ajouter des types: 'shield', 'speed', 'vision', 'magnet'
+  - Modifier MoveTo pour gérer les différents effets
+
+Difficulté: ⭐⭐⭐⭐ (Moyenne-Difficile)
+
+
+1.3 SYSTÈME DE COMBO
+---------------------
+Description:
+  Récompenser les joueurs qui mangent plusieurs fruits rapidement
+  avec un multiplicateur de points progressif.
+
+Mécanique:
+  - Manger un fruit démarre/continue le combo
+  - Si aucun fruit mangé pendant 3 secondes, le combo se réinitialise
+  - Multiplicateur: x1, x1.5, x2, x2.5, x3 (maximum)
+  - Score = Points de base × Multiplicateur de combo
+
+Affichage:
+  - Compteur de combo dans l'interface
+  - Message: "COMBO x3!"
+  - Animation spéciale quand combo > 5
+
+Implémentation:
+  - Ajouter 'combo' et 'lastFruitTime' au state global
+  - Thread qui vérifie périodiquement le timeout du combo
+  - Modifier calcul de score dans MovedTo
+
+Avantages:
+  ✓ Encourage un gameplay agressif
+  ✓ Récompense la performance
+  ✓ Crée de l'excitation et de la tension
+  ✓ Relativement simple à implémenter
+
+Difficulté: ⭐⭐⭐ (Moyenne)
+
+
+1.4 MODES DE JEU ALTERNATIFS
+-----------------------------
+Description:
+  Offrir différents modes de jeu pour varier l'expérience.
+
+Modes suggérés:
+  🕐 MODE SURVIE
+     - Objectif: Survivre le plus longtemps possible
+     - Timer: 5 minutes
+     - Score basé sur fruits mangés + temps de survie
+     - Difficulté croissante (plus de murs apparaissent)
+  
+  🏰 MODE LABYRINTHE
+     - Carte avec couloirs étroits et nombreux murs
+     - Fruits rares mais valent plus de points
+     - Nécessite navigation précise
+  
+  ⚔️ MODE BATAILLE
+     - Serpents peuvent se tuer même sans power-up
+     - Manger l'adversaire donne ses points
+     - Dernier survivant gagne
+  
+  🤝 MODE COOPÉRATIF
+     - 2-3 serpents forment une équipe
+     - Score partagé
+     - Objectif: Atteindre un score cible ensemble
+     - Pénalité si un coéquipier meurt
+
+Implémentation:
+  - Ajouter paramètre 'gameMode' dans Input.oz
+  - Modifier logique de GameLoop selon le mode
+  - Adapter les règles de collision et scoring
+
+Difficulté: ⭐⭐⭐⭐⭐ (Difficile)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. AMÉLIORATION DE L'IA
+═══════════════════════════════════════════════════════════════════════════════
+
+2.1 DIFFÉRENTS NIVEAUX D'IA
+----------------------------
+Description:
+  Créer plusieurs niveaux de difficulté pour l'IA, du débutant à l'expert.
+
+Niveaux proposés:
+  🟢 NIVEAU FACILE (Actuel - Random)
+     - Mouvement complètement aléatoire
+     - Ne considère pas les dangers
+     - Bon pour tester les mécaniques
+  
+  🟡 NIVEAU MOYEN (Pathfinding basique)
+     - Se dirige vers le fruit le plus proche
+     - Évite les murs directs
+     - Algorithme: Simple greedy (choix direction vers fruit)
+     - Implémentation: Calculer distance Manhattan vers fruits
+  
+  🟠 NIVEAU DIFFICILE (Pathfinding avancé)
+     - Utilise A* pour trouver chemin optimal vers fruits
+     - Évite les cul-de-sacs
+     - Détecte les pièges potentiels
+     - Anticipe les mouvements des autres serpents
+  
+  🔴 NIVEAU EXPERT (Stratégie complexe)
+     - Contrôle territorial (bloque les zones riches)
+     - Piège les adversaires
+     - Priorise les power-ups
+     - Calcule risque/bénéfice pour chaque action
+
+Implémentation:
+  - Créer AgentMedium.oz, AgentHard.oz, AgentExpert.oz
+  - Chaque bot utilise une stratégie différente
+  - Configurer le niveau dans Input.oz
+
+Algorithmes à implémenter:
+  - Distance Manhattan: |X1-X2| + |Y1-Y2|
+  - A* pathfinding pour trouver chemin vers objectif
+  - Floodfill pour évaluer espace disponible
+  - Minimax pour anticiper mouvements adverses
+
+Difficulté: ⭐⭐⭐⭐ (Difficile)
+
+
+2.2 PERSONNALITÉS D'IA
+-----------------------
+Description:
+  Donner des "personnalités" aux bots pour des comportements distincts.
+
+Types de personnalité:
+  ⚔️ AGRESSIF
+     - Priorité: Couper les autres serpents
+     - Se met en travers du chemin des adversaires
+     - Cherche les power-ups offensifs
+     - Prend des risques pour éliminer
+  
+  🛡️ DÉFENSIF
+     - Priorité: Survivre le plus longtemps possible
+     - Évite les confrontations
+     - Reste dans les zones sûres
+     - Ne prend que les fruits sans danger
+  
+  🍎 GLOUTON
+     - Priorité: Manger le maximum de fruits
+     - Ignore les adversaires sauf danger imminent
+     - Toujours en mouvement vers un fruit
+     - Prend des risques calculés pour les fruits
+  
+  🧠 STRATÉGIQUE
+     - Priorité: Contrôler les zones riches en fruits
+     - Bloque l'accès aux ressources
+     - Équilibre risque/bénéfice
+     - Adapte sa stratégie selon la situation
+
+Implémentation:
+  - Ajouter paramètre 'personality' dans config bot
+  - Modifier fonction de décision selon personnalité
+  - Poids différents pour les facteurs de décision
+
+Avantages:
+  ✓ Parties plus variées et intéressantes
+  ✓ Émergence de dynamiques complexes
+  ✓ Chaque partie est unique
+  ✓ Facile à tester et débugger
+
+Difficulté: ⭐⭐⭐ (Moyenne)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. STATISTIQUES ET PROGRESSION
+═══════════════════════════════════════════════════════════════════════════════
+
+3.1 SYSTÈME DE STATISTIQUES
+----------------------------
+Description:
+  Tracker et afficher des statistiques détaillées sur les parties jouées.
+
+Statistiques à tracker:
+  📊 GLOBALES
+     - Nombre total de parties jouées
+     - Temps de jeu total
+     - Score moyen/médian/maximum
+     - Taux de victoire par couleur
+  
+  🎯 PAR PARTIE
+     - Durée de la partie
+     - Fruits mangés (réguliers, pourris, spéciaux)
+     - Nombre de kills (si applicable)
+     - Distance parcourue
+     - Longueur maximale atteinte
+     - Power-ups collectés
+  
+  🐍 PAR SERPENT
+     - Victoires/défaites
+     - KDA (Kills/Deaths/Assists)
+     - Score moyen
+     - Fruits favoris
+     - Cause de mort principale
+
+Implémentation:
+  - Créer fichier Stats.oz
+  - Structure de données pour historique
+  - Sauvegarde dans fichier texte après chaque partie
+  - Écran de stats accessible depuis menu
+
+Affichage:
+  - Tableau récapitulatif à la fin de chaque partie
+  - Graphiques de progression au fil du temps
+  - Comparaison entre les serpents
+  - Highlights de la partie (meilleur moment)
+
+Difficulté: ⭐⭐⭐⭐ (Moyenne-Difficile)
+
+
+3.2 SYSTÈME D'ACHIEVEMENTS
+---------------------------
+Description:
+  Débloquer des succès pour accomplir des objectifs spécifiques.
+
+Catégories d'achievements:
+  🏆 SURVIE
+     - "Survivant": Survivre 5 minutes sans mourir
+     - "Immortel": Gagner une partie sans mourir
+     - "Chat noir": Survivre avec 1 segment pendant 30 secondes
+     - "Résistant": Survivre à 10 collisions avec le bouclier
+  
+  🍎 COLLECTE
+     - "Glouton": Manger 50 fruits en une partie
+     - "Affamé": Manger 100 fruits au total
+     - "Dégustateur": Manger tous les types de fruits
+     - "Combo Master": Faire un combo x5
+  
+  ⚔️ COMBAT
+     - "Prédateur": Tuer 3 serpents en une partie
+     - "Dominateur": Tuer tous les adversaires
+     - "Assassin": Tuer un serpent plus long que soi
+     - "Invincible": Gagner 5 parties d'affilée
+  
+  🎯 COMPÉTENCE
+     - "Précis": Ne jamais toucher un mur pendant 2 minutes
+     - "Explorateur": Visiter toutes les cases de la carte
+     - "Rapide": Gagner en moins de 3 minutes
+     - "Géant": Atteindre une longueur de 50 segments
+
+Implémentation:
+  - Créer Achievements.oz
+  - Liste des achievements avec conditions
+  - Vérification des conditions pendant la partie
+  - Notification popup quand débloqué
+  - Sauvegarde des achievements dans fichier
+
+Récompenses:
+  - Badges visuels
+  - Skins spéciaux débloqués
+  - Titres à afficher
+  - Score bonus global
+
+Difficulté: ⭐⭐⭐ (Moyenne)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. AMÉLIORATIONS VISUELLES
+═══════════════════════════════════════════════════════════════════════════════
+
+4.1 EFFETS VISUELS AMÉLIORÉS
+-----------------------------
+Description:
+  Ajouter des effets visuels pour rendre le jeu plus dynamique et attrayant.
+
+Effets suggérés:
+  💥 PARTICULES D'EXPLOSION
+     - Quand: Serpent meurt
+     - Effet: 10-20 particules de la couleur du serpent
+     - Animation: Expansion puis disparition (fade out)
+     - Implémentation: Créer classe Particle avec update/render
+  
+  ✨ PAILLETTES D'INVINCIBILITÉ
+     - Quand: Power-up actif
+     - Effet: Particules dorées autour du serpent
+     - Animation: Rotation et scintillement
+     - Déjà partiellement implémenté (border doré)
+  
+  🌟 ANIMATION DE CROISSANCE
+     - Quand: Serpent mange un fruit
+     - Effet: Flash lumineux + expansion temporaire
+     - Animation: 0.2 secondes de "pulse"
+     - Implémentation: Modifier temporairement taille sprite
+  
+  🎨 TRAÎNÉE LUMINEUSE
+     - Effet: Ligne colorée qui suit le serpent
+     - Fade progressif sur 5 segments
+     - Optionnel: Activable/désactivable
+     - Implémentation: Overlay semi-transparent sur la queue
+
+Système de particules:
+  - Classe ParticleSystem pour gérer toutes les particules
+  - Pool de particules réutilisables (performance)
+  - Update dans la boucle graphique principale
+  - Limiter nombre max de particules actives
+
+Note de performance:
+  ⚠️ Attention: QTk peut bloquer avec trop d'opérations graphiques
+  → Limiter nombre de particules
+  → Utiliser buffering
+  → Tester performance avant activation complète
+
+Difficulté: ⭐⭐⭐⭐ (Difficile - risque de blocking)
+
+
+4.2 THÈMES VISUELS
+------------------
+Description:
+  Permettre de changer l'apparence visuelle complète du jeu.
+
+Thèmes proposés:
+  🌙 THÈME NUIT
+     - Fond: Noir/bleu foncé
+     - Serpents: Couleurs néon brillantes
+     - Fruits: Lumineux avec halo
+     - Murs: Gris foncé avec reflets
+  
+  🌈 THÈME NÉON
+     - Fond: Noir absolu
+     - Serpents: Contours néon colorés
+     - Fruits: Formes géométriques lumineuses
+     - Effets: Trails lumineux
+     - Style: Tron/Cyberpunk
+  
+  👾 THÈME RÉTRO
+     - Style: Pixel art 8-bit
+     - Palette: 4 couleurs limitées
+     - Serpents: Blocs pixelisés
+     - Fruits: Sprites simples
+     - Effets sonores: Beeps rétro
+  
+  🎨 THÈME CUSTOM
+     - Permettre de charger des sprites personnalisés
+     - Fichiers de configuration couleur
+     - Assets remplaçables
+
+Implémentation:
+  - Créer dossier themes/ avec sous-dossiers par thème
+  - Fichier theme.config avec définition couleurs
+  - Fonction LoadTheme() dans Graphics.oz
+  - Sélection de thème dans menu configuration
+
+Difficulté: ⭐⭐⭐ (Moyenne)
+
+
+4.3 ÉCRAN DE VICTOIRE ANIMÉ
+----------------------------
+Description:
+  Afficher un écran de victoire spectaculaire pour le gagnant.
+
+Éléments:
+  - Animation du serpent gagnant (danse, rotation)
+  - Feux d'artifice/confettis
+  - Récapitulatif des stats de la partie
+  - Podium des 3 premiers
+  - Option: Rejouer ou Quitter
+
+Difficulté: ⭐⭐ (Facile)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. AMÉLIORATIONS DE LA CARTE
+═══════════════════════════════════════════════════════════════════════════════
+
+5.1 ÉLÉMENTS DE MAP DYNAMIQUES
+-------------------------------
+Description:
+  Ajouter des éléments interactifs qui changent le terrain de jeu.
+
+Types d'éléments:
+  🌀 PORTAILS
+     - Apparence: Cercles colorés pulsants
+     - Effet: Téléporte instantanément vers portail jumeau
+     - Placement: Par paires (entrée/sortie)
+     - Nombre: 2-3 paires par carte
+     - Implémentation: Détecter entrée dans MovedTo, changer position
+  
+  🧱 MURS MOBILES
+     - Comportement: Se déplacent d'une case toutes les 5 secondes
+     - Direction: Aléatoire ou pattern prédéfini
+     - Vitesse: Lente pour être visible
+     - Implémentation: Thread qui update position périodiquement
+  
+  ⚡ ZONES DE BOOST
+     - Apparence: Cases colorées spéciales
+     - Effet: Vitesse x2 ou invincibilité temporaire
+     - Durée: 3 secondes
+     - Distribution: 5-10 cases aléatoires
+  
+  🕳️ TRAPPES
+     - Comportement: Disparaissent/réapparaissent (cycle 5s)
+     - Danger: Si serpent dessus quand disparaît → mort
+     - Visuellement: Clignotement avant changement
+     - Implémentation: Timer avec phases (solid/warning/hole)
+
+Avantages:
+  ✓ Gameplay plus dynamique
+  ✓ Nécessite adaptation constante
+  ✓ Crée des situations imprévisibles
+  ✓ Encourage exploration
+
+Implémentation générale:
+  - Ajouter type 'dynamic' aux items
+  - Thread de gestion pour chaque type d'élément
+  - Update du GridStructure en temps réel
+  - Broadcast des changements aux bots
+
+Difficulté: ⭐⭐⭐⭐ (Difficile)
+
+
+5.2 GÉNÉRATEUR DE MAPS AVANCÉ
+------------------------------
+Description:
+  Améliorer le générateur de cartes avec templates et modes.
+
+Fonctionnalités:
+  📋 MAPS PRÉDÉFINIES
+     - Labyrinthe classique
+     - Arène circulaire
+     - Spirale
+     - Symétrie parfaite
+     - Couloirs en croix
+  
+  🎲 GÉNÉRATION PROCÉDURALE AVANCÉE
+     - Algorithmes: BSP, Cellular Automata, Perlin Noise
+     - Paramètres ajustables (densité, connectivité)
+     - Garantie de jouabilité (pas de spawn bloqué)
+     - Seed pour reproductibilité
+  
+  🔄 OBSTACLES DYNAMIQUES
+     - Murs qui apparaissent progressivement
+     - Zone qui se rétrécit (Battle Royale style)
+     - Rotation de sections de la carte
+  
+  🎨 ZONES THÉMATIQUES
+     - Zones avec règles spéciales
+     - "Zone rapide": mouvement 2x plus rapide
+     - "Zone affamée": perte de segments au fil du temps
+     - "Zone riche": plus de fruits
+
+Implémentation:
+  - Refactorer Input.oz pour supporter templates
+  - Créer MapGenerator.oz avec différents algorithmes
+  - Ajouter paramètre mapType dans configuration
+  - Validation automatique de jouabilité
+
+Difficulté: ⭐⭐⭐⭐⭐ (Très difficile)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. FONCTIONNALITÉS STRATÉGIQUES
+═══════════════════════════════════════════════════════════════════════════════
+
+6.1 SYSTÈME DE TERRITOIRE
+--------------------------
+Description:
+  Les serpents peuvent contrôler et défendre des zones de la carte.
+
+Mécanique:
+  - Serpent "marque" territoire en y restant 5 secondes
+  - Zone marquée change de teinte (semi-transparent, couleur du serpent)
+  - Bonus: +50% points pour fruits mangés dans son territoire
+  - Pénalité: -1 point/seconde si dans territoire ennemi
+  - Contrôle: Perdre territoire si autre serpent y reste 5 secondes
+
+Affichage:
+  - Overlay coloré sur les cases contrôlées
+  - Bordure plus intense pour le "cœur" du territoire
+  - Compteur de territoire dans le scoreboard
+
+Stratégie:
+  - Équilibre entre expansion et défense
+  - Conflits pour zones riches en fruits
+  - Possibilité de piéger adversaires
+
+Implémentation:
+  - Ajouter array 2D pour ownership de chaque case
+  - Timer par case pour changement de contrôle
+  - Modifier scoring dans MovedTo selon ownership
+  - Overlay graphique dans Graphics.oz
+
+Difficulté: ⭐⭐⭐⭐ (Difficile)
+
+
+6.2 ITEMS RAMASSABLES AVANCÉS
+------------------------------
+Description:
+  Items utilisables stratégiquement par les serpents.
+
+Types d'items:
+  💣 BOMBE
+     - Effet: Détruit murs dans rayon de 2 cases
+     - Usage: Activation manuelle
+     - Cooldown: 30 secondes
+     - Stratégie: Créer passages ou piéger adversaires
+  
+  🪤 PIÈGE
+     - Effet: Case devient mortelle pour autres serpents
+     - Durée: 15 secondes
+     - Visuel: Discret (difficile à voir)
+     - Limite: 3 pièges actifs maximum
+  
+  🌀 TÉLÉPORTEUR
+     - Effet: Téléportation vers case vide aléatoire
+     - Usage: Unique (item disparaît après usage)
+     - Stratégie: Échapper à danger ou voler fruit
+  
+  🔮 VISION
+     - Effet: Révèle position de tous les serpents
+     - Durée: 5 secondes
+     - Stratégie: Planifier mouvement ou éviter danger
+
+Système d'inventaire:
+  - Chaque serpent peut porter 1-2 items
+  - Touche/message pour activer item
+  - Cooldown global entre utilisations
+
+Implémentation:
+  - Ajouter 'inventory' au bot tracker
+  - Nouvelle classe Item avec sous-types
+  - Message useItem(Id ItemType) pour activation
+  - Logique d'effet dans MoveTo/MovedTo
+
+Difficulté: ⭐⭐⭐⭐ (Difficile)
+
+
+6.3 SYSTÈME DE VIE/SANTÉ
+-------------------------
+Description:
+  Les serpents ont plusieurs vies au lieu de mourir instantanément.
+
+Mécanique:
+  - Chaque serpent commence avec 3 ❤️
+  - Collision/mur: -1 ❤️
+  - 0 ❤️: Mort définitive
+  - Fruits rouges spéciaux: +1 ❤️ (max 3)
+  - Respawn temporaire après perte de vie (2s d'invincibilité)
+
+Affichage:
+  - Cœurs à côté du nom dans le ranking
+  - Barre de vie au-dessus du serpent
+  - Animation de dégât (flash rouge)
+
+Changements de gameplay:
+  - Jeu plus accessible (moins punitif)
+  - Possibilité de comeback
+  - Stratégie: sacrifier vie pour voler fruit
+
+Implémentation:
+  - Ajouter 'health' au bot tracker (1-3)
+  - Modifier logique de mort dans MoveTo/MovedTo
+  - Ajouter type 'healthfruit' avec spawn rare
+  - Respawn temporaire avec invincibilité
+
+Difficulté: ⭐⭐⭐ (Moyenne)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. AUDIO ET FEEDBACK
+═══════════════════════════════════════════════════════════════════════════════
+
+7.1 EFFETS SONORES
+------------------
+Description:
+  Ajouter des sons pour améliorer l'immersion et le feedback.
+
+Sons suggérés:
+  🔊 ÉVÉNEMENTS DE JEU
+     - Manger fruit: "Crunch" satisfaisant
+     - Collision: "Crash" dramatique
+     - Power-up: Son brillant/magique
+     - Mort: Son d'explosion
+     - Victoire: Fanfare
+  
+  🎵 MUSIQUE DE FOND
+     - Track principal (loop)
+     - Variation quand peu de survivants
+     - Musique intense en fin de partie
+     - Volume ajustable
+  
+  ⚠️ SONS D'ALERTE
+     - Serpent proche: Bip de proximité
+     - Power-up expire bientôt: Countdown
+     - Danger imminent: Son d'alarme
+
+Implémentation (Mozart/Oz):
+  ⚠️ LIMITATION: Mozart/Oz n'a pas de support audio natif
+  
+  Solutions possibles:
+  1. Utiliser commandes système (aplay, paplay)
+     - {OS.system "aplay sound.wav" _ _}
+     - Simple mais peut causer lag
+  
+  2. Intégration externe
+     - Script Python/Shell pour gérer l'audio
+     - Communication via fichiers ou ports
+  
+  3. Désactivation
+     - Garder le jeu silencieux (état actuel)
+     - Documenter comment ajouter audio manuellement
+
+Recommandation: Optionnel, peut être ajouté plus tard
+
+Difficulté: ⭐⭐⭐⭐⭐ (Très difficile en Mozart/Oz)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. COMPÉTITION ET REPLAY
+═══════════════════════════════════════════════════════════════════════════════
+
+8.1 SYSTÈME DE REPLAY
+----------------------
+Description:
+  Enregistrer et rejouer les parties pour analyse ou plaisir.
+
+Fonctionnalités:
+  📹 ENREGISTREMENT
+     - Sauvegarde de tous les états de jeu frame par frame
+     - Format: Liste chronologique de states
+     - Compression: Seulement les changements (delta encoding)
+     - Taille: ~1-5 MB par partie de 5 minutes
+  
+  ▶️ LECTURE
+     - Rejouer la partie exactement comme elle s'est déroulée
+     - Contrôles: Play, Pause, Vitesse (0.5x, 1x, 2x, 4x)
+     - Navigation: Sauter à un timestamp
+     - Vue: Caméra libre ou suivre un serpent
+  
+  📊 ANALYSE
+     - Afficher statistiques en temps réel pendant replay
+     - Heatmap des zones visitées
+     - Graph d'évolution des scores
+     - Moments clés (kills, fruits rares)
+
+Implémentation:
+  - Créer Replay.oz pour gestion
+  - State serialization (conversion en format sauvegardable)
+  - Fichier .replay avec metadata + états
+  - Mode replay dans Main.oz (lecture au lieu de game loop)
+
+Structure fichier replay:
+  ```
+  {
+    version: "1.0"
+    date: "2025-12-04"
+    duration: 324  % secondes
+    players: [...]
+    states: [
+      {time:0 state:...}
+      {time:16 state:...}  % 60 FPS = frame toutes les 16ms
+      ...
+    ]
+  }
+  ```
+
+Difficulté: ⭐⭐⭐⭐ (Difficile)
+
+
+8.2 MODE TOURNOI
+-----------------
+Description:
+  Organiser une série de parties avec système d'élimination ou points.
+
+Formats:
+  🏆 ÉLIMINATION DIRECTE
+     - Bracket tournament (8 bots → 4 → 2 → 1)
+     - Dernier survivant de chaque partie qualifié
+     - Finale pour déterminer champion
+  
+  📊 SYSTÈME DE POINTS
+     - 5 parties jouées par tous les bots
+     - Points par placement: 1er=5pts, 2e=3pts, 3e=1pt
+     - Classement final par total de points
+  
+  🎯 ROUND ROBIN
+     - Chaque bot joue contre chaque autre
+     - Format: Parties à 2-3 bots
+     - Score cumulatif sur toutes les rencontres
+
+Fonctionnalités:
+  - Génération automatique du bracket
+  - Sauvegarde progression entre parties
+  - Écran récapitulatif avec classement
+  - Export résultats en fichier texte
+
+Implémentation:
+  - Créer Tournament.oz
+  - Boucle de parties avec tracking
+  - Interface de sélection participants
+  - Sauvegarde état du tournoi
+
+Difficulté: ⭐⭐⭐⭐ (Difficile)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. RECOMMANDATIONS PRIORITAIRES
+═══════════════════════════════════════════════════════════════════════════════
+
+Basé sur:
+  - Facilité d'implémentation
+  - Impact sur le gameplay
+  - Compatibilité avec le code existant
+  - Temps de développement estimé
+
+
+🥇 PRIORITÉ 1 - QUICK WINS (1-3 jours)
+----------------------------------------
+Ces fonctionnalités sont relativement simples et ont un impact immédiat:
+
+1. ⭐⭐⭐ SYSTÈME DE COMBO
+   Pourquoi: Réutilise système existant, ajoute excitation
+   Impact: Gameplay plus dynamique et récompensant
+   Fichiers: Main.oz (modification scoring), Graphics.oz (affichage)
+   
+2. ⭐⭐⭐ FRUITS BONUS (types variés)
+   Pourquoi: Extension du système de fruits actuel
+   Impact: Variété et stratégie
+   Fichiers: Main.oz (nouveaux types), Input.oz (spawn logic)
+   
+3. ⭐⭐ STATISTIQUES FIN DE PARTIE
+   Pourquoi: Simple tracking de variables existantes
+   Impact: Satisfaction et feedback pour le joueur
+   Fichiers: Nouveau Stats.oz, modification Main.oz
+
+
+🥈 PRIORITÉ 2 - MEDIUM EFFORT (3-7 jours)
+------------------------------------------
+Fonctionnalités avec bon ratio effort/bénéfice:
+
+4. ⭐⭐⭐ IA AVEC PATHFINDING (niveau moyen)
+   Pourquoi: Améliore drastiquement le challenge
+   Impact: Parties plus intéressantes et compétitives
+   Fichiers: Nouveau AgentMedium.oz
+   Algorithme: Distance Manhattan + greedy selection
+   
+5. ⭐⭐⭐ PORTAILS SUR LA CARTE
+   Pourquoi: Élément tactique simple à implémenter
+   Impact: Nouvelles possibilités stratégiques
+   Fichiers: Input.oz (génération), Main.oz (téléportation)
+   
+6. ⭐⭐⭐ SYSTÈME D'ACHIEVEMENTS
+   Pourquoi: Objectifs à long terme, rejouabilité
+   Impact: Motivation et sense of progression
+   Fichiers: Nouveau Achievements.oz
+
+
+🥉 PRIORITÉ 3 - LONG TERM (1-2 semaines)
+-----------------------------------------
+Projets ambitieux nécessitant plus de temps:
+
+7. ⭐⭐⭐⭐ EFFETS VISUELS (particules)
+   Pourquoi: Améliore polish et présentation
+   Attention: Risque de performance avec QTk
+   Impact: Jeu plus spectaculaire et professionnel
+   
+8. ⭐⭐⭐⭐ SYSTÈME DE TERRITOIRE
+   Pourquoi: Mécanique profonde et originale
+   Impact: Nouvelle dimension stratégique
+   Complexité: Gestion d'état supplémentaire
+   
+9. ⭐⭐⭐⭐ SYSTÈME DE REPLAY
+   Pourquoi: Très utile pour debug et analyse
+   Impact: Contenu additionnel et apprentissage
+   Complexité: Serialization et player custom
+
+
+⚠️ À ÉVITER (ou reporter)
+--------------------------
+Ces fonctionnalités sont trop complexes ou risquées:
+
+❌ Audio/Sons: Mozart/Oz n'a pas de support natif fiable
+❌ Maps dynamiques complexes: Risque de bugs et performance
+❌ Modes de jeu multiples: Nécessite refonte architecture
+❌ IA niveau expert: Algorithmes complexes (minimax, etc.)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+PLAN D'ACTION SUGGÉRÉ
+═══════════════════════════════════════════════════════════════════════════════
+
+Si vous avez 1 semaine:
+-----------------------
+Jour 1-2: Système de combo + fruits bonus
+Jour 3-4: Statistiques + achievements basiques
+Jour 5-6: IA pathfinding niveau moyen
+Jour 7: Polish, testing, documentation
+
+Si vous avez 3-5 jours:
+-----------------------
+Jour 1-2: Système de combo
+Jour 3: Fruits bonus (2-3 types)
+Jour 4-5: Statistiques fin de partie + polish
+
+Si vous avez 1-2 jours:
+-----------------------
+Focus: Système de combo uniquement
+Raison: Impact maximal, implémentation complète et testée
+
+
+═══════════════════════════════════════════════════════════════════════════════
+NOTES TECHNIQUES IMPORTANTES
+═══════════════════════════════════════════════════════════════════════════════
+
+⚠️ Performance et QTk:
+----------------------
+- QTk peut bloquer avec trop d'opérations graphiques synchrones
+- Toujours tester performance avant d'ajouter des renderings complexes
+- Privilégier updates asynchrones avec messages
+- Limiter nombre d'objets graphiques actifs simultanément
+
+🔧 Architecture actuelle:
+-------------------------
+- Message-passing entre composants (ports)
+- State immutable avec updates fonctionnels
+- Separation claire GUI/Logic/AI
+- Thread par bot agent
+
+💡 Bonnes pratiques:
+--------------------
+- Tester chaque feature isolément avant intégration
+- Commiter après chaque feature fonctionnelle
+- Documenter les changements dans ce fichier
+- Garder backward compatibility avec config existante
+
+🐛 Debug tips:
+--------------
+- Utiliser {Browse ...} pour inspecter états
+- Logger messages dans console
+- Tester avec 2 bots d'abord, puis scaler à 5
+- Vérifier les race conditions avec {Delay ...}
+
+
+═══════════════════════════════════════════════════════════════════════════════
+CONCLUSION
+═══════════════════════════════════════════════════════════════════════════════
+
+Ce document présente 18 catégories de fonctionnalités possibles pour
+améliorer le jeu SNOZ. Les suggestions sont classées par:
+  - Difficulté d'implémentation (⭐ à ⭐⭐⭐⭐⭐)
+  - Impact sur le gameplay
+  - Faisabilité technique en Mozart/Oz
+
+Recommandation principale:
+--------------------------
+Commencer par le SYSTÈME DE COMBO et les FRUITS BONUS pour un impact
+immédiat avec un effort raisonnable. Ces features réutilisent l'architecture
+existante et ajoutent beaucoup de valeur au gameplay.
+
+Pour toute question ou aide à l'implémentation, n'hésitez pas!
+
+═══════════════════════════════════════════════════════════════════════════════

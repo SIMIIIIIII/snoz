@@ -20,6 +20,9 @@ define
 
     FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/fruit.png')}
     ROTTEN_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/rotten_fruit.png')}
+    BONUS_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/bonus_fruit.png')}
+    SHIELD_SPRITE = {QTk.newImage photo(file: CD # '/assets/shield.png')}
+    HEALTH_FRUIT_SPRITE = {QTk.newImage photo(file: CD # '/assets/health_fruit.png')}
     
     % Mapping from bot IDs to color names for display
     ID_to_COLOR = converter(
@@ -87,7 +90,7 @@ define
     %   - grow(Size): Increases snake length (currently unimplemented)
     class Snake from GameObject
         attr 'isMoving' 'moveDir' 'targetX' 'targetY'
-        'tail' 'length' 'powerup'
+        'tail' 'length' 'powerup' 'shield' 'health'
 
         % init: Initializes a snake.
         % Inputs: Id (unique identifier), X (pixel x-coord), Y (pixel y-coord)
@@ -99,6 +102,8 @@ define
             'tail' := body_part(x:X y:Y)|nil
             'length' := 3   % 1 what pixel or what exactly
             'powerup' := false
+            'shield' := false
+            'health' := 3
         end
 
         % setTarget: Sets the movement direction and calculates target coordinates.
@@ -220,6 +225,52 @@ define
             'powerup' := false
         end
 
+        % activateShield: Activates visual shield effect
+        meth activateShield()
+            'shield' := true
+        end
+
+        % deactivateShield: Deactivates visual shield effect
+        meth deactivateShield()
+            'shield' := false
+        end
+
+        % loseHealth: Decreases health by 1
+        meth loseHealth()
+            if @health > 0 then
+                'health' := @health - 1
+            end
+        end
+
+        % gainHealth: Increases health by 1 (max 3)
+        meth gainHealth()
+            if @health < 3 then
+                'health' := @health + 1
+            end
+        end
+
+        % getHealth: Returns current health
+        meth getHealth($)
+            @health
+        end
+
+        % setHealth: Sets health to specific value
+        meth setHealth(NewHealth)
+            'health' := NewHealth
+        end
+
+        % teleport: Repositions the snake to new coordinates (used for respawn)
+        % Input: NewX, NewY (pixel coordinates)
+        meth teleport(NewX NewY)
+            'x' := NewX
+            'y' := NewY
+            'targetX' := NewX
+            'targetY' := NewY
+            'isMoving' := false
+            'tail' := body_part(x:NewX y:NewY)|nil  % Reset tail to single segment
+            'length' := 3  % Reset length
+        end
+
         meth render(Buffer)
             % 1. Dessiner la tête
             try
@@ -258,6 +309,13 @@ define
                 end
             catch _ then
                 skip  % Ignore any rendering errors
+            end
+
+            % 3. Dessiner le shield bleu si actif
+            if @shield then
+                try
+                    {Buffer copy(SHIELD_SPRITE 'to': o(@x @y))}
+                catch _ then skip end
             end
         end
 
@@ -360,7 +418,14 @@ define
                     'text': "close"
                     'action' : proc {$} {Application.exit 0} end
                 )
+                'action': proc {$} skip end
             )}
+            
+            % Bind keyboard events for human player control
+            {@window bind(event: '<Up>' action: proc {$} {Send GCPort keyPressed('north')} end)}
+            {@window bind(event: '<Down>' action: proc {$} {Send GCPort keyPressed('south')} end)}
+            {@window bind(event: '<Left>' action: proc {$} {Send GCPort keyPressed('west')} end)}
+            {@window bind(event: '<Right>' action: proc {$} {Send GCPort keyPressed('east')} end)}
 
             'score' := 0
             'lastMsg' := 'Message box is empty'
@@ -426,6 +491,21 @@ define
             {Send @gcPort rottenFruitDispawned(X Y)}
         end
 
+        % spawnBonusFruit: Spawns a bonus fruit at the given grid coordinates.
+        % Inputs: X (grid x), Y (grid y)
+        % Draws bonus fruit on background and notifies Game Controller
+        meth spawnBonusFruit(X Y)
+            {@background copy(BONUS_FRUIT_SPRITE 'to': o(X * 32 Y * 32))}
+            {Send @gcPort bonusFruitSpawned(X Y)}
+        end
+
+        % dispawnBonusFruit: Removes a bonus fruit from the grid.
+        % Inputs: X (grid x), Y (grid y)
+        meth dispawnBonusFruit(X Y)
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            {Send @gcPort bonusFruitDispawned(X Y)}
+        end
+
         % ateFruit: Handles a snake eating a fruit.
         % Inputs: X (grid x), Y (grid y), Id (bot identifier)                             %should use this i think to increase its length
         % Makes the snake grow by 1 segment
@@ -447,6 +527,78 @@ define
             if Bot \= 'null' then
                 {Bot shrink()}                  % reduce la longueur de moitié
                 {self dispawnRottenFruit(X Y)}  % enlève le fruit pourri de la map
+            end
+        end
+
+        % ateBonusFruit: Handles a snake eating a bonus fruit.
+        % Inputs: X (grid x), Y (grid y), Id (bot identifier)
+        % Makes the snake grow (bonus fruit gives +5 points)
+        meth ateBonusFruit(X Y Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot grow(5)}                    % augmente la longueur logique
+                {self dispawnBonusFruit(X Y)}    % enlève le fruit bonus de la map
+            end
+        end
+
+        % spawnShield: Spawns a shield power-up at the given grid coordinates.
+        % Inputs: X (grid x), Y (grid y)
+        % Draws shield on background and notifies Game Controller
+        meth spawnShield(X Y)
+            {@background copy(SHIELD_SPRITE 'to': o(X * 32 Y * 32))}
+            {Send @gcPort shieldSpawned(X Y)}
+        end
+
+        % dispawnShield: Removes a shield from the grid.
+        % Inputs: X (grid x), Y (grid y)
+        meth dispawnShield(X Y)
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            {Send @gcPort shieldDispawned(X Y)}
+        end
+
+        % activateShieldVisual: Activates shield visual for a snake
+        % Input: Id (bot identifier)
+        meth activateShieldVisual(Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot activateShield()}
+            end
+        end
+
+        % deactivateShieldVisual: Deactivates shield visual for a snake
+        % Input: Id (bot identifier)
+        meth deactivateShieldVisual(Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot deactivateShield()}
+            end
+        end
+
+        % spawnHealthFruit: Spawns a health fruit at the given grid coordinates.
+        % Inputs: X (grid x), Y (grid y)
+        meth spawnHealthFruit(X Y)
+            {@background copy(HEALTH_FRUIT_SPRITE 'to': o(X * 32 Y * 32))}
+            {Send @gcPort healthFruitSpawned(X Y)}
+        end
+
+        % dispawnHealthFruit: Removes a health fruit from the grid.
+        % Inputs: X (grid x), Y (grid y)
+        meth dispawnHealthFruit(X Y)
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            {Send @gcPort healthFruitDispawned(X Y)}
+        end
+
+        % ateHealthFruit: Handles a snake eating a health fruit.
+        % Inputs: X (grid x), Y (grid y), Id (bot identifier)
+        meth ateHealthFruit(X Y Id)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot gainHealth()}
+                {self dispawnHealthFruit(X Y)}
             end
         end
 
@@ -562,6 +714,16 @@ define
             {Dictionary.remove @gameObjects Id}
         end
 
+        % respawnBot: Teleports an existing bot to a new position (for respawn after losing life)
+        % Input: Id (bot identifier), X (grid x-coord), Y (grid y-coord)
+        meth respawnBot(Id X Y)
+            Bot = {Dictionary.condGet @gameObjects Id 'null'}
+        in
+            if Bot \= 'null' then
+                {Bot teleport(X * 32 Y * 32)}
+            end
+        end
+
         % moveBot: Initiates movement for a bot in the specified direction.
         % Inputs: Id (bot identifier), Dir (direction atom)
         meth moveBot(Id Dir)
@@ -592,7 +754,9 @@ define
             ScoreHandle = {Dictionary.condGet @snakeScoreHandles Id 'null'}
         in
             if ScoreHandle \= 'null' then
-                {ScoreHandle set('text': ID_to_COLOR.Id # ': ' # Score)}
+                try
+                    {ScoreHandle set(text: ID_to_COLOR.Id # ': ' # Score)}
+                catch E then skip end
             end
         end
 
@@ -603,51 +767,27 @@ define
             % Convert tracker to list and sort by score (descending)
             BotList = {Record.toList Tracker}
             SortedBots = {Sort BotList fun {$ B1 B2} B1.score > B2.score end}
-            Rank = {NewCell 0}
-            AllBotIds = {Dictionary.keys @snakeScoreHandles}
         in
-            % First pass: delete all existing items using their handles
-            for BotId in AllBotIds do
+            % Update position and text for each bot in sorted order
+            for Bot in SortedBots Index in 0..(({Length SortedBots} - 1)) do
                 local 
-                    ScoreHandle = {Dictionary.condGet @snakeScoreHandles BotId unit}
-                    SpriteHandle = {Dictionary.condGet @snakeSpriteHandles BotId unit}
+                    YPos = 150 + (Index * 40)
+                    ScoreHandle = {Dictionary.condGet @snakeScoreHandles Bot.id unit}
+                    SpriteHandle = {Dictionary.condGet @snakeSpriteHandles Bot.id unit}
                 in
-                    if ScoreHandle \= unit then
-                        try {ScoreHandle tkClose} catch _ then skip end
-                    end
+                    % Move sprite to new position
                     if SpriteHandle \= unit then
-                        try {SpriteHandle tkClose} catch _ then skip end
+                        try
+                            {SpriteHandle setCoords(GridWidth+50 YPos)}
+                        catch E then skip end
                     end
-                end
-            end
-            
-            % Clear the dictionaries by removing all entries
-            {Dictionary.removeAll @snakeScoreHandles}
-            {Dictionary.removeAll @snakeSpriteHandles}
-            
-            % Now recreate displays in sorted order
-            for Bot in SortedBots do
-                if Bot.alive then
-                    local 
-                        YPos = 150 + (@Rank * 40)
-                        NewScoreHandle
-                        NewSpriteHandle
-                        HeadSprite
-                    in
-                        % Create new sprite and text at the correct position
-                        HeadSprite = {QTk.newImage photo(file: CD # '/assets/SNAKE_' # Bot.id # '/body.png')}
-                        {@canvas create('image' GridWidth+50 YPos 'image': HeadSprite 'handle': NewSpriteHandle)}
-                        {@canvas create('text' GridWidth+200 YPos 
-                            'text': ID_to_COLOR.(Bot.id) # ': ' # Bot.score 
-                            'fill': 'white' 
-                            'font': FONT 
-                            'handle': NewScoreHandle)}
-                        
-                        % Update dictionaries with new handles
-                        {Dictionary.put @snakeScoreHandles Bot.id NewScoreHandle}
-                        {Dictionary.put @snakeSpriteHandles Bot.id NewSpriteHandle}
-                        
-                        Rank := @Rank + 1
+                    
+                    % Update text content and position
+                    if ScoreHandle \= unit then
+                        try
+                            {ScoreHandle setCoords(GridWidth+200 YPos)}
+                            {ScoreHandle set(text: ID_to_COLOR.(Bot.id) # ': ' # Bot.score)}
+                        catch E then skip end
                     end
                 end
             end

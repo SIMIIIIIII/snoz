@@ -1,0 +1,813 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    SNOZ GAME - CONTRÔLE CLAVIER HUMAIN                       ║
+║                     Implémentation du Joueur Contrôlable                     ║
+║                                                                              ║
+║                            Date: 4 décembre 2025                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+TABLE DES MATIÈRES:
+==================
+1. VUE D'ENSEMBLE
+2. ARCHITECTURE DU SYSTÈME
+3. IMPLÉMENTATION DÉTAILLÉE
+4. FLUX DE MESSAGES
+5. FICHIERS MODIFIÉS
+6. INSTRUCTIONS D'UTILISATION
+7. DÉTAILS TECHNIQUES
+8. PROBLÈMES RÉSOLUS
+
+
+═══════════════════════════════════════════════════════════════════════════════
+1. VUE D'ENSEMBLE
+═══════════════════════════════════════════════════════════════════════════════
+
+Description:
+  Permet à un joueur humain de contrôler un serpent (le serpent rouge) à l'aide
+  des touches directionnelles du clavier, tandis que les autres serpents sont
+  contrôlés par l'IA.
+
+Fonctionnalités:
+  ✓ Contrôle du serpent rouge avec les touches fléchées
+  ✓ Mouvement continu dans la direction actuelle
+  ✓ Changement de direction en temps réel
+  ✓ Comportement identique aux serpents IA (fruits, points, collisions)
+  ✓ Système de vie et respawn fonctionnel
+  ✓ Affichage du score dans le classement
+
+Touches:
+  ↑ (Haut)    → Direction Nord
+  ↓ (Bas)     → Direction Sud
+  ← (Gauche)  → Direction Ouest
+  → (Droite)  → Direction Est
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. ARCHITECTURE DU SYSTÈME
+═══════════════════════════════════════════════════════════════════════════════
+
+Composants Principaux:
+---------------------
+
+1. AgentHuman.oz
+   - Nouvel agent pour le contrôle humain
+   - Gère les messages changeDirection(Dir)
+   - Maintient le mouvement continu dans la direction actuelle
+   
+2. Graphics.oz
+   - Capture les événements clavier (QTk bind)
+   - Envoie les messages keyPressed(Dir) au contrôleur
+   
+3. Main.oz
+   - Gestionnaire KeyPressed pour router les commandes
+   - Récupère le port de l'agent humain
+   - Transmet les changements de direction
+   
+4. AgentManager.oz
+   - Factory pour créer l'agent humain
+   - Stocke le port de l'agent humain globalement
+   - Fonction getHumanPort pour accès externe
+   
+5. Input.oz
+   - Configuration du serpent rouge comme joueur humain
+   - Utilise AgentHuman au lieu d'AgentBlank
+
+Flux de Données:
+---------------
+  Clavier → QTk Event → Graphics.oz → GCPort → Main.KeyPressed → 
+  AgentManager.getHumanPort → AgentHuman.changeDirection → moveTo
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. IMPLÉMENTATION DÉTAILLÉE
+═══════════════════════════════════════════════════════════════════════════════
+
+3.1 AGENTHUMAIN.OZ (NOUVEAU FICHIER)
+------------------------------------
+
+Fichier: AgentHuman.oz
+Lignes: ~85 lignes
+Type: Functor Mozart/Oz
+
+Structure de l'Agent:
+```oz
+functor
+export
+    'getPort': SpawnAgent
+define
+    fun {Agent State}
+        % Gestionnaires de messages
+        fun {ChangeDirection changeDirection(NewDir)}
+            % Met à jour la direction sans envoyer moveTo immédiatement
+        end
+        
+        fun {InitPos initPosition(Id _ X Y)}
+            % Initialise la position et commence le mouvement
+        end
+        
+        fun {MovedTo movedTo(Id _ X Y)}
+            % Continue le mouvement dans la direction actuelle
+        end
+        
+        fun {HandleDeath invalidAction()}
+            % Gère la mort du serpent
+        end
+    in
+        % Dispatcher de messages
+    end
+    
+    fun {SpawnAgent init(Id GCPort Map)}
+        % Crée l'agent avec état initial
+    end
+end
+```
+
+État de l'Agent:
+```oz
+state(
+    'id': Id             % ID du serpent (4 pour rouge)
+    'map': Map           % Référence à la carte
+    'gcport': GCPort     % Port du contrôleur de jeu
+    'dir': 'north'       % Direction actuelle
+    'x': ~1              % Position X (initialisée plus tard)
+    'y': ~1              % Position Y (initialisée plus tard)
+    'port': Port         % Port de l'agent pour recevoir messages
+    'alive': true        % État vivant/mort
+)
+```
+
+Messages Gérés:
+  • changeDirection(NewDir)
+      - Reçu depuis Graphics.oz via Main.oz
+      - Met à jour State.dir
+      - Ne pas envoyer moveTo (évite conflit avec mouvement en cours)
+      
+  • initPosition(Id Type X Y)
+      - Reçu au début du jeu
+      - Initialise position et direction
+      - Envoie premier moveTo('north')
+      
+  • movedTo(Id Type X Y)
+      - Reçu après chaque mouvement réussi (broadcast)
+      - Vérifie si Id == State.id
+      - Met à jour position
+      - Envoie moveTo(State.dir) pour continuer
+      
+  • invalidAction()
+      - Reçu lors d'une collision fatale
+      - Met alive à false
+      - Arrête le mouvement
+
+Cycle de Mouvement:
+  1. Agent envoie: moveTo(Id Direction)
+  2. Main.oz traite le mouvement
+  3. Main.oz broadcast: movedTo(Id Type X Y)
+  4. Agent reçoit movedTo, envoie nouveau moveTo
+  → Mouvement continu
+
+Changement de Direction:
+  1. Utilisateur appuie sur flèche
+  2. ChangeDirection met à jour State.dir
+  3. Prochain movedTo utilise nouvelle direction
+  → Changement fluide sans interruption
+
+
+3.2 GRAPHICS.OZ (MODIFICATIONS)
+--------------------------------
+
+Fichier: Graphics.oz
+Section: CreateWindow (lignes ~410-427)
+
+Ajouts:
+```oz
+Window = {New Tk.toplevel tkInit(...)}
+...
+{Window tkBind(event: '<Up>' 
+               action: proc {$} {Send GCPort keyPressed('north')} end)}
+{Window tkBind(event: '<Down>' 
+               action: proc {$} {Send GCPort keyPressed('south')} end)}
+{Window tkBind(event: '<Left>' 
+               action: proc {$} {Send GCPort keyPressed('west')} end)}
+{Window tkBind(event: '<Right>' 
+               action: proc {$} {Send GCPort keyPressed('east')} end)}
+```
+
+Fonctionnement:
+  - QTk capture les événements clavier sur la fenêtre
+  - Chaque touche directionnelle déclenche une action
+  - Action: Envoie message keyPressed(Direction) au GCPort
+  - Message traité par le contrôleur de jeu (Main.oz)
+
+
+3.3 MAIN.OZ (MODIFICATIONS)
+----------------------------
+
+Fichier: Main.oz
+
+A) Déclarations (ligne ~32):
+```oz
+define
+    ...
+    KeyPressed
+    ...
+in
+```
+
+B) Fonction KeyPressed (ligne ~825):
+```oz
+fun {KeyPressed keyPressed(Dir)}
+    HumanPort = {AgentManager.getHumanPort}
+in
+    if HumanPort \= unit then
+        {Send HumanPort changeDirection(Dir)}
+    end
+    {GameController State}
+end
+```
+
+Fonctionnement:
+  1. Reçoit message keyPressed(Direction) depuis Graphics.oz
+  2. Récupère le port de l'agent humain via AgentManager
+  3. Envoie changeDirection(Dir) à l'agent humain
+  4. Retourne contrôleur inchangé (pas d'effet sur état global)
+
+C) Interface du Dispatcher (ligne ~853):
+```oz
+Interface = interface(
+    'moveTo': MoveTo
+    'movedTo': MovedTo
+    ...
+    'keyPressed': KeyPressed
+    ...
+)
+```
+
+
+3.4 AGENTMANAGER.OZ (MODIFICATIONS)
+------------------------------------
+
+Fichier: AgentManager.oz
+
+A) Import:
+```oz
+import
+    AgentBlank
+    AgentHuman
+```
+
+B) Export:
+```oz
+export
+    'spawnBot': SpawnBot
+    'getHumanPort': GetHumanPort
+```
+
+C) Variable Globale:
+```oz
+define
+    HumanAgentPort = {NewCell unit}
+```
+
+D) SpawnBot (ajout cas 'AgentHuman'):
+```oz
+fun {SpawnBot init(Id GCPort Map) AgentType}
+    Port
+in
+    case AgentType
+    of 'AgentBlank' then
+        Port = {AgentBlank.getPort init(Id GCPort Map)}
+    [] 'AgentHuman' then
+        Port = {AgentHuman.getPort init(Id GCPort Map)}
+        {Assign HumanAgentPort Port}  % Stocke le port globalement
+    end
+    Port
+end
+```
+
+E) GetHumanPort (nouvelle fonction):
+```oz
+fun {GetHumanPort}
+    {Access HumanAgentPort}
+end
+```
+
+Fonctionnement:
+  - Lors de la création de l'agent humain, son port est stocké dans une cellule
+  - GetHumanPort permet à Main.oz d'accéder au port pour envoyer messages
+  - Cellule permet état mutable dans environnement concurrent
+
+
+3.5 INPUT.OZ (MODIFICATIONS)
+-----------------------------
+
+Fichier: Input.oz
+Ligne: ~26
+
+Avant:
+```oz
+bot('snake' 'AgentBlank' (3 * Dim div 4) (Dim div 2))  % Red
+```
+
+Après:
+```oz
+bot('snake' 'AgentHuman' (3 * Dim div 4) (Dim div 2))  % Red - HUMAN PLAYER
+```
+
+Effet:
+  - Le serpent rouge (ID 4, position centre-droite) utilise AgentHuman
+  - Les autres serpents restent avec AgentBlank (IA)
+
+
+3.6 MAKEFILE (MODIFICATIONS)
+-----------------------------
+
+Fichier: Makefile
+
+Ajout compilation:
+```makefile
+compile:
+    $(OZC) -c Input.oz -o "compiled/Input.ozf"
+    $(OZC) -c AgentManager.oz -o "compiled/AgentManager.ozf"
+    $(OZC) -c AgentBlank.oz -o "compiled/AgentBlank.ozf"
+    $(OZC) -c AgentHuman.oz -o "compiled/AgentHuman.ozf"    # NOUVEAU
+    $(OZC) -c Graphics.oz -o "compiled/Graphics.ozf"
+    $(OZC) -c Main.oz -o "compiled/Main.ozf"
+```
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. FLUX DE MESSAGES
+═══════════════════════════════════════════════════════════════════════════════
+
+4.1 INITIALISATION
+------------------
+
+Séquence au démarrage:
+  1. Main.oz démarre → Lit Input.oz
+  2. Input.oz définit bot 4 avec 'AgentHuman'
+  3. Main.oz appelle AgentManager.spawnBot(4, GCPort, Map, 'AgentHuman')
+  4. AgentManager crée AgentHuman et stocke son port
+  5. Main.oz envoie initPosition(4, 'snake', X, Y) à tous les agents
+  6. AgentHuman reçoit initPosition:
+     - Enregistre position initiale
+     - Envoie moveTo(4, 'north')
+  7. Serpent commence à bouger vers le nord
+
+
+4.2 MOUVEMENT CONTINU
+----------------------
+
+Boucle de mouvement automatique:
+
+  AgentHuman                Main.oz                    Graphics.oz
+      |                        |                            |
+      |--moveTo(4,'north')---->|                            |
+      |                        |--moveBot(4,'north')------->|
+      |                        |  (déplace visuellement)    |
+      |                        |--Broadcast---------------->|
+      |<---movedTo(4,'snake',X,Y)                           |
+      |                        |                            |
+      |--moveTo(4,'north')---->|                            |
+      |       (répète)         |                            |
+      |                        |                            |
+
+
+4.3 CHANGEMENT DE DIRECTION
+----------------------------
+
+Séquence lors d'une pression de touche:
+
+  Utilisateur              Graphics.oz      Main.oz        AgentHuman
+      |                        |               |                |
+      |--[Appuie sur →]------->|               |                |
+      |                        |--keyPressed('east')----------->|
+      |                        |               |--changeDirection('east')-->|
+      |                        |               |                | State.dir='east'
+      |                        |               |<--(retour)-----|
+      |                        |               |                |
+      |                        |               |                |--moveTo(4,'east')
+      |                        |               |<---------------|  (utilise nouvelle dir)
+      |                        |               |                |
+
+Important:
+  - changeDirection ne fait QUE mettre à jour State.dir
+  - Le prochain movedTo utilise automatiquement la nouvelle direction
+  - Pas d'envoi immédiat de moveTo (évite conflit avec mouvement en cours)
+
+
+4.4 COLLISION ET MORT
+----------------------
+
+Séquence lors d'une collision avec mur (sans bouclier/invincibilité):
+
+  AgentHuman                Main.oz
+      |                        |
+      |--moveTo(4, 'north')---->|
+      |                        |--IsWall() = true
+      |                        |--State.tracker.4.health - 1
+      |                        |--Si health > 0:
+      |                        |    Respawn + invincibilité
+      |<---movedTo(4,'snake',NewX,NewY)  (nouvelle position)
+      |--moveTo(4,State.dir)--->|  (continue à bouger)
+      |                        |
+      |                        |--Si health == 0:
+      |<---invalidAction()-----|    (mort définitive)
+      | State.alive = false    |
+      | (arrête de bouger)     |
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. FICHIERS MODIFIÉS
+═══════════════════════════════════════════════════════════════════════════════
+
+Fichiers Nouveaux:
+  ✓ AgentHuman.oz (~85 lignes)
+
+Fichiers Modifiés:
+  ✓ Input.oz
+      - Ligne 26: Changé 'AgentBlank' en 'AgentHuman' pour bot 4
+      
+  ✓ AgentManager.oz
+      - Import: Ajouté AgentHuman
+      - Export: Ajouté GetHumanPort
+      - Variable: HumanAgentPort = {NewCell unit}
+      - SpawnBot: Ajouté cas 'AgentHuman'
+      - Fonction: GetHumanPort
+      
+  ✓ Graphics.oz
+      - Ligne ~410-427: Ajouté bind pour touches directionnelles
+      - 4 événements QTk: <Up>, <Down>, <Left>, <Right>
+      
+  ✓ Main.oz
+      - Ligne ~32: Déclaré KeyPressed
+      - Ligne ~825: Fonction KeyPressed
+      - Ligne ~853: Ajouté 'keyPressed':KeyPressed dans interface
+      
+  ✓ Makefile
+      - Ligne 22: Ajouté compilation AgentHuman.oz
+
+Fichiers Inchangés:
+  • AgentBlank.oz (IA reste identique)
+  • Tous les autres fichiers du projet
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. INSTRUCTIONS D'UTILISATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Compilation:
+```bash
+cd /path/to/snoz
+make
+```
+
+Lancement:
+```bash
+make
+# ou directement:
+ozengine compiled/Main.ozf
+```
+
+Contrôles:
+  ↑ (Haut)    → Aller vers le nord
+  ↓ (Bas)     → Aller vers le sud
+  ← (Gauche)  → Aller vers l'ouest
+  → (Droite)  → Aller vers l'est
+
+Comportement:
+  - Le serpent rouge est contrôlé par le joueur
+  - Les serpents jaune, bleu, vert, cyan sont contrôlés par l'IA
+  - Le serpent continue dans sa direction jusqu'à changement
+  - Impossible de faire demi-tour (direction opposée ignorée par design)
+  - Manger des fruits augmente le score affiché dans le classement
+  - Système de vie: 3 cœurs, respawn avec invincibilité temporaire
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. DÉTAILS TECHNIQUES
+═══════════════════════════════════════════════════════════════════════════════
+
+7.1 CONCEPTION DU MOUVEMENT CONTINU
+------------------------------------
+
+Problème à résoudre:
+  - Les serpents IA changent de direction aléatoirement à chaque case
+  - Le joueur humain doit pouvoir garder une direction constante
+  - Changement de direction doit être réactif
+
+Solution implémentée:
+  - État interne: State.dir conserve la direction actuelle
+  - À chaque movedTo: envoie moveTo(State.dir) automatiquement
+  - changeDirection: met à jour State.dir sans interrompre le mouvement
+  - Résultat: mouvement fluide et continu
+
+Algorithme:
+```
+ÉTAT: dir = 'north', x = 5, y = 5
+
+1. Agent envoie: moveTo(4, 'north')
+2. Main traite: Position devient (5, 4)
+3. Main broadcast: movedTo(4, 'snake', 5, 4)
+4. Agent reçoit movedTo:
+   - Met à jour: x=5, y=4
+   - Envoie: moveTo(4, dir)  // dir = 'north'
+5. Retour à l'étape 2
+
+Si utilisateur appuie sur →:
+   - changeDirection('east') reçu
+   - dir devient 'east'
+   - Prochain moveTo utilise 'east' automatiquement
+```
+
+
+7.2 GESTION DES ÉVÉNEMENTS CLAVIER
+-----------------------------------
+
+QTk Event Binding:
+```oz
+{Window tkBind(
+    event: '<Up>'
+    action: proc {$} {Send GCPort keyPressed('north')} end
+)}
+```
+
+Fonctionnement:
+  - tkBind attache un événement à la fenêtre
+  - event: Pattern X11 pour touches (<Up>, <Down>, etc.)
+  - action: Procédure anonyme exécutée lors de l'événement
+  - {Send GCPort ...}: Envoie message asynchrone au contrôleur
+
+Avantages:
+  - Non-bloquant: Pas d'attente de retour
+  - Concurrent: Plusieurs touches peuvent être appuyées rapidement
+  - Découpé: Graphics.oz ne connaît pas AgentHuman directement
+
+
+7.3 ARCHITECTURE MESSAGE-PASSING
+---------------------------------
+
+Ports et Streams:
+```oz
+% Création du port de l'agent
+Stream
+Port = {NewPort Stream}
+
+% Thread consommateur
+thread {Handler Stream Instance} end
+
+% Envoi de message
+{Send Port changeDirection('east')}
+```
+
+Avantages:
+  - Découplage: Émetteur ne connaît pas récepteur
+  - Asynchronisme: Send ne bloque pas
+  - File d'attente: Messages traités séquentiellement
+  - Concurrence: Plusieurs agents indépendants
+
+
+7.4 SYNCHRONISATION ÉTAT-MESSAGE
+---------------------------------
+
+Problème:
+  Si changeDirection envoyait moveTo immédiatement, il pourrait y avoir:
+    - Double envoi de moveTo (collision de commandes)
+    - Incohérence entre position et direction
+    - Perte de messages dans la file
+
+Solution:
+```oz
+fun {ChangeDirection changeDirection(NewDir)}
+    if State.alive then
+        % NE PAS envoyer moveTo ici !
+        {Agent {Adjoin State state(dir:NewDir)}}
+    else
+        {Agent State}
+    end
+end
+```
+
+Principe:
+  - changeDirection met SEULEMENT à jour dir
+  - movedTo continue le cycle avec la nouvelle direction
+  - Une seule source de moveTo: la boucle movedTo
+  - Garantit cohérence et évite race conditions
+
+
+7.5 CELLULES POUR ÉTAT PARTAGÉ
+-------------------------------
+
+Problème:
+  - Main.oz doit accéder au port de l'agent humain
+  - AgentManager crée l'agent
+  - Impossible de passer par paramètre (architecture existante)
+
+Solution:
+```oz
+% Dans AgentManager.oz
+HumanAgentPort = {NewCell unit}
+
+% Lors de la création
+{Assign HumanAgentPort Port}
+
+% Lors de l'accès
+fun {GetHumanPort}
+    {Access HumanAgentPort}
+end
+```
+
+Avantages:
+  - État mutable dans environnement fonctionnel
+  - Accès global contrôlé via fonction
+  - Thread-safe (opérations atomiques)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. PROBLÈMES RÉSOLUS
+═══════════════════════════════════════════════════════════════════════════════
+
+8.1 PROBLÈME: DOUBLE ENVOI DE MOVETO
+-------------------------------------
+
+Symptôme:
+  - Fruits ne disparaissaient pas quand mangés
+  - Score ne s'incrémentait pas
+  - Serpent avait comportement erratique
+
+Cause:
+  - ChangeDirection envoyait moveTo immédiatement
+  - MovedTo envoyait aussi moveTo
+  - Deux commandes simultanées dans la file
+  - Main.oz traitait mouvement avant que le précédent soit terminé
+  - Collision de l'état interne
+
+Solution:
+```oz
+% AVANT (incorrect):
+fun {ChangeDirection changeDirection(NewDir)}
+    {Send State.gcport moveTo(State.id NewDir)}  % ← PROBLÈME
+    {Agent {Adjoin State state(dir:NewDir)}}
+end
+
+% APRÈS (correct):
+fun {ChangeDirection changeDirection(NewDir)}
+    % Pas de Send ici !
+    {Agent {Adjoin State state(dir:NewDir)}}
+end
+```
+
+Résultat:
+  ✓ Une seule source de moveTo (boucle movedTo)
+  ✓ Fruits disparaissent correctement
+  ✓ Score s'incrémente
+  ✓ Mouvement fluide
+
+
+8.2 PROBLÈME: VARIABLE KEYPRESSED NON DÉCLARÉE
+-----------------------------------------------
+
+Symptôme:
+```
+%** Tell: <P/2 KeyPressed> = <P/2 KeyPressed>
+%** variable KeyPressed not introduced
+```
+
+Cause:
+  - KeyPressed défini DANS la fonction anonyme du dispatcher
+  - Portée locale incorrecte
+  - Référence avant définition dans l'interface
+
+Solution:
+```oz
+% Structure correcte:
+fun {GameController State}
+    fun {MoveTo ...} ... end
+    fun {MovedTo ...} ... end
+    fun {KeyPressed ...} ... end  % ← Défini au même niveau
+in
+    fun {$ Msg}  % ← Dispatcher
+        Interface = interface('keyPressed':KeyPressed ...)
+    in
+        ...
+    end
+end
+```
+
+Règle:
+  - Fonctions de gestion définies AVANT le dispatcher
+  - Portée lexicale correcte avec "in"
+
+
+8.3 PROBLÈME: MODULE AGENTHUMAN NON TROUVÉ
+-------------------------------------------
+
+Symptôme:
+```
+%** Could not load functor at URL: compiled/AgentHuman.ozf
+```
+
+Cause:
+  - AgentHuman.oz créé mais pas compilé
+  - Makefile ne contenait pas la règle de compilation
+
+Solution:
+```makefile
+compile:
+    ...
+    $(OZC) -c AgentHuman.oz -o "compiled/AgentHuman.ozf"
+    ...
+```
+
+Vérification:
+```bash
+ls -la compiled/AgentHuman.ozf
+# Doit exister après make
+```
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. AMÉLIORATIONS FUTURES POSSIBLES
+═══════════════════════════════════════════════════════════════════════════════
+
+9.1 FONCTIONNALITÉS GAMEPLAY
+-----------------------------
+
+• Pause du jeu
+  - Touche [Espace] pour pause
+  - Arrêter tous les agents temporairement
+  - Afficher "PAUSE" à l'écran
+
+• Touche pour changer de serpent
+  - Touche [Tab] pour passer au serpent suivant
+  - Permet de contrôler différents serpents
+  - Mettre l'ancien en IA automatique
+
+• Vitesse variable
+  - Touches [+] et [-] pour ajuster vitesse
+  - Modifier le délai entre mouvements
+  - Difficulté dynamique
+
+
+9.2 AMÉLIORATIONS TECHNIQUES
+-----------------------------
+
+• Multi-joueurs locaux
+  - Joueur 2 avec WASD (au lieu de flèches)
+  - Créer AgentHuman2.oz
+  - Deux ports humains dans AgentManager
+
+• Prévention demi-tour
+  - Bloquer direction opposée dans changeDirection
+  - Exemple: si dir='north', ignorer 'south'
+  - Évite mort accidentelle
+
+• Feedback visuel
+  - Indicateur de contrôle (icône clavier sur serpent rouge)
+  - Flèche indiquant direction actuelle
+  - Highlight différent pour joueur humain
+
+
+9.3 OPTIMISATIONS
+------------------
+
+• Buffer de commandes
+  - File de 2-3 commandes clavier
+  - Permet changements rapides
+  - Évite perte de commandes lors de spam
+
+• Interpolation de mouvement
+  - Animation plus fluide entre cases
+  - Calcul de positions intermédiaires
+  - Améliore expérience visuelle
+
+• Deadzone directionnelle
+  - Ignorer commandes trop rapprochées
+  - Éviter changements accidentels
+  - Délai minimum entre changements
+
+
+═══════════════════════════════════════════════════════════════════════════════
+10. RÉFÉRENCES ET RESSOURCES
+═══════════════════════════════════════════════════════════════════════════════
+
+Documentation Mozart/Oz:
+  • Mozart2 Documentation: https://mozart.github.io/
+  • QTk Reference Manual
+  • Concurrent Programming in Oz
+
+Fichiers du Projet:
+  • AgentHuman.oz - Agent contrôlé par clavier
+  • AgentBlank.oz - Agent IA (référence)
+  • Graphics.oz - Interface graphique et événements
+  • Main.oz - Contrôleur de jeu principal
+  • AgentManager.oz - Factory d'agents
+  • Input.oz - Configuration du jeu
+
+Documentation Associée:
+  • rotten_fruit_implementation.txt
+  • suggestions_fonctionnalites.txt
+  • README.md
+
+
+═══════════════════════════════════════════════════════════════════════════════
+FIN DU DOCUMENT
+═══════════════════════════════════════════════════════════════════════════════

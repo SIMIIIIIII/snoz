@@ -1,0 +1,560 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    JEU SNOZ - DOCUMENTATION DU PROJET                        ║
+║                   Jeu Snake Multi-Agents Compétitif                          ║
+║                                                                              ║
+║                  LINFO1131 - Concepts de Programmation Avancés               ║
+║                            Langage Mozart/Oz                                 ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Dernière mise à jour : 4 décembre 2025
+
+TABLE DES MATIÈRES :
+====================
+1. VUE D'ENSEMBLE DU PROJET
+2. ARCHITECTURE DU SYSTÈME
+3. MODULES PRINCIPAUX
+4. FONCTIONNALITÉS DU JEU
+5. IMPLÉMENTATIONS PERSONNALISÉES
+   5.1 Système de Fruits Pourris
+   5.2 Système de Power-ups (Invincibilité)
+   5.3 Détection de Collisions
+   5.4 Génération Aléatoire de Cartes
+   5.5 Système de Classement Dynamique
+   5.6 Système de Vie/Santé
+   5.7 Boucliers Protecteurs
+   5.8 Fruits Bonus
+   5.9 Contrôle Clavier Humain
+6. PROTOCOLE DE MESSAGES
+7. CONFIGURATION ET PERSONNALISATION
+8. INSTRUCTIONS DE COMPILATION ET EXÉCUTION
+9. SPÉCIFICATIONS TECHNIQUES
+10. CORRECTIONS DE BUGS ET OPTIMISATIONS
+
+
+═══════════════════════════════════════════════════════════════════════════════
+1. VUE D'ENSEMBLE DU PROJET
+═══════════════════════════════════════════════════════════════════════════════
+
+SNOZ est un jeu snake multi-agents concurrent démontrant des concepts de
+programmation avancés en Mozart/Oz, incluant :
+
+✦ PROGRAMMATION CONCURRENTE : Plusieurs agents indépendants exécutés simultanément
+✦ PASSAGE DE MESSAGES : Communication asynchrone via des ports
+✦ CONCEPTION ORIENTÉE OBJET : Classes pour objets du jeu (Snake, Fruit, etc.)
+✦ GRAPHIQUES EN TEMPS RÉEL : Rendu basé sur QTk avec double buffering
+✦ PROGRAMMATION FONCTIONNELLE : Fonctions d'ordre supérieur, pattern matching, récursion
+✦ CONTRAINTES DÉCLARATIVES : Gestion d'état via records
+
+Objectif du Jeu :
+-----------------
+- 5 serpents (4 IA + 1 joueur humain optionnel) s'affrontent sur une carte générée aléatoirement
+- Manger des fruits pour grandir et gagner des points
+- Éviter les murs et les autres serpents (sauf si invincible)
+- Système de vie : 3 cœurs par serpent, respawn avec invincibilité temporaire
+- Le dernier serpent survivant gagne
+- Classement en temps réel affichant les scores
+
+Points Techniques Clés :
+-------------------------
+- Implémentation en Mozart/Oz pur
+- Gestion d'agents concurrents thread-safe
+- Architecture de passage de messages non-bloquante
+- Mise à jour graphique dynamique sans perte de frames
+- Gestion complète d'erreurs pour la stabilité
+- Support du contrôle clavier pour joueur humain
+
+
+═══════════════════════════════════════════════════════════════════════════════
+2. ARCHITECTURE DU SYSTÈME
+═══════════════════════════════════════════════════════════════════════════════
+
+Diagramme des Composants :
+---------------------------
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        CONTRÔLEUR PRINCIPAL                                  │
+│  ┌────────────────────────────────────────────────────────────────────┐    │
+│  │  Boucle de Jeu (Main.oz)                                           │    │
+│  │  - Gestion d'État                                                  │    │
+│  │  - Traitement des Messages                                         │    │
+│  │  - Coordination de la Logique du Jeu                               │    │
+│  └───────────────┬──────────────────────────────┬─────────────────────┘    │
+│                  │                               │                          │
+└──────────────────┼───────────────────────────────┼──────────────────────────┘
+                   │                               │
+        ┌──────────▼──────────┐         ┌─────────▼──────────┐
+        │  GESTIONNAIRE        │         │   MODULE GRAPHIQUE  │
+        │  D'AGENTS            │         │   (Graphics.oz)     │
+        │  (AgentManager.oz)   │         │                     │
+        │                      │         │  - Fenêtre QTk      │
+        │  - Cycle de Vie Bot  │         │  - Rendu Serpents   │
+        │  - Gestion des Ports │         │  - Affichage Fruits │
+        │  - Spawn d'Agents    │         │  - Tableau Scores   │
+        └──────────┬───────────┘         │  - Boîte Messages   │
+                   │                      │  - Événements       │
+         ┌─────────▼─────────┐           │    Clavier          │
+         │  AGENTS IA & HUMAIN│           └─────────────────────┘
+         │  (AgentBlank.oz)   │
+         │  (AgentHuman.oz)   │
+         │                    │
+         │  - Stratégie IA    │
+         │  - Contrôle Clavier│
+         │  - Gestion Messages│
+         └────────────────────┘
+
+Configuration :
+Input.oz - Paramètres du jeu, génération de carte, points de spawn des bots
+
+
+═══════════════════════════════════════════════════════════════════════════════
+3. MODULES PRINCIPAUX
+═══════════════════════════════════════════════════════════════════════════════
+
+3.1 MAIN.OZ - CONTRÔLEUR DE JEU
+--------------------------------
+Responsabilités :
+  • Initialisation du jeu et configuration
+  • Boucle principale du contrôleur de jeu
+  • Traitement des messages (moveTo, movedTo, etc.)
+  • Détection des collisions (mur, serpent-à-serpent)
+  • Gestion du spawn/despawn des fruits
+  • Système de vie et respawn des serpents
+  • Gestion des power-ups (invincibilité, boucliers)
+  • Vol de points lors de kills avec power-up
+  • Détermination du gagnant
+  • Routage des commandes clavier
+
+Fonctions Clés :
+  - GameController : Contrôleur principal récursif
+  - MoveTo : Traite les requêtes de mouvement des bots
+  - MovedTo : Gère les notifications de fin de mouvement
+  - CheckSnakeCollision : Détecte collisions entre serpents
+  - SpawnRottenFruit, SpawnBonusFruit, SpawnHealthFruit, SpawnShield
+  - DeactivatePowerup : Désactive l'invincibilité après timeout
+  - KeyPressed : Route les commandes clavier vers agent humain
+
+Messages Traités :
+  • moveTo(Id Dir) - Requête de mouvement d'un bot
+  • movedTo(Id Type X Y) - Notification de fin de mouvement
+  • fruitSpawned/Dispawned - Gestion des fruits réguliers
+  • rottenFruitSpawned/Dispawned - Gestion des fruits pourris
+  • bonusFruitSpawned/Dispawned - Gestion des fruits bonus
+  • healthFruitSpawned/Dispawned - Gestion des fruits de santé
+  • shieldSpawned/Dispawned - Gestion des boucliers
+  • deactivatePowerup(Id Time) - Désactivation power-up
+  • keyPressed(Dir) - Commande clavier joueur
+
+
+3.2 GRAPHICS.OZ - INTERFACE GRAPHIQUE
+--------------------------------------
+Responsabilités :
+  • Création et gestion de la fenêtre QTk
+  • Rendu des serpents avec couleurs distinctes
+  • Affichage des fruits (réguliers, pourris, bonus, santé)
+  • Affichage des boucliers
+  • Tableau de classement en temps réel
+  • Boîte de messages pour événements
+  • Affichage des cœurs de vie
+  • Indicateurs visuels de power-ups
+  • Capture des événements clavier
+
+Classes QTk :
+  - GUIController : Contrôleur principal de l'interface
+  - Snake : Représentation visuelle d'un serpent
+  - Fruit : Représentation visuelle d'un fruit
+  - Map : Génération et affichage de la carte
+
+Méthodes Importantes :
+  • spawnBot : Crée un serpent visuel
+  • moveBot : Anime le mouvement d'un serpent
+  • ateFruit : Animation de consommation de fruit
+  • dispawnBot : Retire un serpent du jeu
+  • respawnBot : Replace un serpent après mort
+  • activatePowerup/deactivatePowerup : Effets visuels invincibilité
+  • activateShieldVisual/deactivateShieldVisual : Effets visuels bouclier
+  • updateScore : Met à jour le score global
+  • updateRankings : Actualise le classement
+  • updateMessageBox : Affiche événements
+  • updateLives : Met à jour affichage des cœurs
+  • tkBind : Lie touches clavier aux actions
+
+
+3.3 AGENTMANAGER.OZ - FACTORY D'AGENTS
+---------------------------------------
+Responsabilités :
+  • Création d'instances d'agents (IA et humain)
+  • Gestion du cycle de vie des agents
+  • Stockage et récupération du port agent humain
+  • Isolation entre logique agent et contrôleur
+
+Fonctions Exportées :
+  • spawnBot : Crée un agent selon le type ('AgentBlank' ou 'AgentHuman')
+  • getHumanPort : Retourne le port de l'agent humain
+
+Types d'Agents :
+  - AgentBlank : Agent IA avec stratégie aléatoire
+  - AgentHuman : Agent contrôlé par clavier
+
+
+3.4 AGENTBLANK.OZ - AGENT IA
+-----------------------------
+Responsabilités :
+  • Stratégie de mouvement aléatoire
+  • Évite demi-tours (direction opposée)
+  • Répond aux messages du contrôleur
+
+État de l'Agent :
+  • id : Identifiant du bot
+  • map : Référence à la carte
+  • gcport : Port du contrôleur de jeu
+  • dir : Direction actuelle
+  • x, y : Position actuelle
+  • alive : État vivant/mort
+  • port : Port pour recevoir messages
+
+Messages Gérés :
+  • initPosition(Id Type X Y) : Initialise position et commence mouvement
+  • movedTo(Id Type X Y) : Choisit prochaine direction aléatoire
+  • invalidAction() : Marque le bot comme mort
+
+
+3.5 AGENTHUMAN.OZ - AGENT JOUEUR HUMAIN
+----------------------------------------
+Responsabilités :
+  • Contrôle par touches directionnelles
+  • Mouvement continu dans direction actuelle
+  • Changement de direction réactif
+  • Comportement identique aux agents IA
+
+État de l'Agent :
+  • id : Identifiant du bot (généralement 4 pour rouge)
+  • map : Référence à la carte
+  • gcport : Port du contrôleur de jeu
+  • dir : Direction actuelle ('north', 'south', 'east', 'west')
+  • x, y : Position actuelle
+  • alive : État vivant/mort
+  • port : Port pour recevoir messages
+
+Messages Gérés :
+  • changeDirection(NewDir) : Reçu lors pression touche clavier
+  • initPosition(Id Type X Y) : Initialise position et commence mouvement
+  • movedTo(Id Type X Y) : Continue mouvement dans direction actuelle
+  • invalidAction() : Marque le bot comme mort
+
+Cycle de Mouvement :
+  1. Utilisateur appuie sur touche directionnelle
+  2. Graphics.oz capture événement
+  3. Main.oz route vers agent humain
+  4. Agent met à jour direction
+  5. Prochain movedTo utilise nouvelle direction automatiquement
+
+
+3.6 INPUT.OZ - CONFIGURATION
+-----------------------------
+Responsabilités :
+  • Définition des paramètres du jeu
+  • Configuration de la carte
+  • Points de spawn des bots
+  • Types d'agents (IA ou humain)
+
+Paramètres Configurables :
+  • dim : Dimension de la carte (hauteur/largeur)
+  • bots : Liste des serpents avec positions
+  • botType : 'AgentBlank' (IA) ou 'AgentHuman' (joueur)
+  • map : Génération aléatoire avec zones
+
+Configuration Actuelle :
+  - Bot 1 (Jaune) : IA, position haut-gauche
+  - Bot 2 (Bleu)  : IA, position haut-droite  
+  - Bot 3 (Vert)  : IA, position bas-gauche
+  - Bot 4 (Rouge) : HUMAIN, position centre-droite
+  - Bot 5 (Cyan)  : IA, position bas-centre
+
+
+═══════════════════════════════════════════════════════════════════════════════
+4. FONCTIONNALITÉS DU JEU
+═══════════════════════════════════════════════════════════════════════════════
+
+4.1 SYSTÈME DE VIE/SANTÉ
+-------------------------
+Description :
+  Chaque serpent possède 3 cœurs. Perd 1 cœur lors collision avec mur ou
+  autre serpent (sauf si invincible ou avec bouclier).
+
+Fonctionnement :
+  • Vie Initiale : 3 cœurs par serpent
+  • Perte de Vie : -1 cœur par collision
+  • Respawn : Téléportation aléatoire + 2s invincibilité
+  • Mort Définitive : 0 cœurs → élimination
+  • Fruit de Santé : +1 cœur (max 3), spawn tous les 10 fruits
+
+Affichage :
+  - Cœurs rouges dans tableau de classement
+  - Message indiquant cœurs restants
+  - Indicateur visuel d'invincibilité lors respawn
+
+
+4.2 SYSTÈME DE POWER-UP (INVINCIBILITÉ)
+----------------------------------------
+Description :
+  Les fruits pourris donnent une invincibilité temporaire permettant de
+  traverser murs et tuer autres serpents.
+
+Obtention :
+  • Manger un fruit pourri (violet)
+  • Respawn après perte d'une vie (2 secondes)
+
+Effets :
+  • Traverser les murs sans dommages
+  • Tuer autres serpents au contact
+  • Voler tous les points du serpent tué
+  • Durée : 5 secondes (fruit pourri) ou 2 secondes (respawn)
+
+Indicateur Visuel :
+  - Effet lumineux autour du serpent
+  - Message dans boîte de messages
+  - Timer automatique pour désactivation
+
+
+4.3 SYSTÈME DE BOUCLIERS
+-------------------------
+Description :
+  Boucliers protègent d'une collision (mur ou serpent), disparaissent après usage.
+
+Obtention :
+  • Apparaissent aléatoirement sur la carte
+  • Spawn : 1 tous les 20 fruits mangés
+
+Effets :
+  • Absorbe 1 collision sans perte de vie
+  • Disparaît après utilisation
+  • Protège contre murs ET serpents
+
+Indicateur Visuel :
+  - Icône de bouclier sur le serpent
+  - Animation lors d'absorption
+  - Message confirmant protection
+
+
+4.4 SYSTÈME DE FRUITS
+----------------------
+
+Fruit Régulier (Rouge) :
+  • +1 point
+  • Fait grandir le serpent
+  • Spawn automatique (toujours 5 sur carte)
+
+Fruit Pourri (Violet) :
+  • Invincibilité 5 secondes
+  • Fait rétrécir le serpent (perd moitié queue)
+  • Spawn : 1 tous les 2 fruits réguliers
+  • Récompense : 2 fruits réguliers apparaissent
+
+Fruit Bonus (Bleu) :
+  • +5 points au lieu de +1
+  • Fait grandir le serpent
+  • Spawn : 1 tous les 5 fruits réguliers
+
+Fruit de Santé (Vert avec croix) :
+  • +1 cœur de vie (maximum 3)
+  • Ne fait pas grandir
+  • Spawn : 1 tous les 10 fruits réguliers
+  • Disparaît après 30 secondes si non mangé
+
+
+4.5 SYSTÈME DE COLLISIONS
+--------------------------
+
+Collision avec Mur :
+  • Sans protection : -1 cœur, respawn
+  • Avec bouclier : Bouclier absorbé, passage
+  • Avec invincibilité : Passage sans dommages
+
+Collision Serpent vs Serpent :
+  • Deux serpents normaux : Les deux perdent 1 cœur
+  • Serpent invincible vs normal : Normal meurt, invincible vole points
+  • Serpent avec bouclier : Bouclier absorbé, pas de dommages
+
+Vol de Points :
+  • Serpent invincible tue autre serpent
+  • Tueur reçoit TOUS les points de la victime
+  • Victime retourne à 0 points (si respawn)
+
+
+4.6 CONTRÔLE CLAVIER
+---------------------
+
+Serpent Contrôlé : Rouge (ID 4)
+
+Touches :
+  ↑ (Haut)    → Aller vers le nord
+  ↓ (Bas)     → Aller vers le sud
+  ← (Gauche)  → Aller vers l'ouest
+  → (Droite)  → Aller vers l'est
+
+Comportement :
+  • Mouvement continu dans direction actuelle
+  • Changement instantané de direction
+  • Impossible de faire demi-tour
+  • Même comportement que serpents IA (fruits, points, vies)
+
+Voir : controle_clavier_implementation.txt
+
+
+4.7 CLASSEMENT ET SCORES
+-------------------------
+
+Affichage :
+  • Tableau en temps réel en haut à droite
+  • Nom du serpent (couleur)
+  • Score actuel
+  • Nombre de cœurs de vie
+  • Ordre : Du plus haut score au plus bas
+
+Mise à Jour :
+  • Après chaque fruit mangé
+  • Après vol de points (kill avec invincibilité)
+  • Animation lors de changement de position
+
+
+═══════════════════════════════════════════════════════════════════════════════
+5. IMPLÉMENTATIONS PERSONNALISÉES DÉTAILLÉES
+═══════════════════════════════════════════════════════════════════════════════
+
+Voir fichiers de documentation spécifiques :
+  • rotten_fruit_implementation.txt (EN) - Système complet
+  • suggestions_fonctionnalites.txt (FR) - Idées d'améliorations
+  • controle_clavier_implementation.txt (FR) - Contrôle joueur humain
+
+
+═══════════════════════════════════════════════════════════════════════════════
+6. PROTOCOLE DE MESSAGES
+═══════════════════════════════════════════════════════════════════════════════
+
+Messages Agent → Contrôleur :
+  • moveTo(Id Direction)
+      → Requête pour bouger dans une direction
+
+Messages Contrôleur → Agent :
+  • initPosition(Id Type X Y)
+      → Initialisation position de départ
+  • movedTo(Id Type X Y)
+      → Notification fin de mouvement (broadcast)
+  • invalidAction()
+      → Signal de mort du bot
+
+Messages Contrôleur → Graphics :
+  • spawnBot(Id Color X Y)
+  • moveBot(Id Direction)
+  • ateFruit(X Y Id)
+  • dispawnBot(Id)
+  • respawnBot(Id X Y)
+  • updateScore(Score)
+  • updateRankings(Tracker)
+  • updateMessageBox(Message)
+  • updateLives(Id Lives)
+  • activatePowerup(Id)
+  • deactivatePowerup(Id)
+  • activateShieldVisual(Id)
+  • deactivateShieldVisual(Id)
+
+Messages Clavier :
+  • keyPressed(Direction) : Graphics → Main
+  • changeDirection(Direction) : Main → AgentHuman
+
+
+═══════════════════════════════════════════════════════════════════════════════
+7. CONFIGURATION ET PERSONNALISATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Modifier Input.oz pour :
+  • Changer dimension de la carte (dim)
+  • Ajuster positions de spawn des bots
+  • Changer types d'agents (IA vs Humain)
+  • Modifier nombre de serpents
+
+Exemples :
+```oz
+% Carte plus grande
+dim = 40
+
+% Tous les serpents en IA
+bot('snake' 'AgentBlank' X Y)
+
+% Deux joueurs humains (nécessite modifications supplémentaires)
+bot('snake' 'AgentHuman' X1 Y1)
+bot('snake' 'AgentHuman2' X2 Y2)
+```
+
+
+═══════════════════════════════════════════════════════════════════════════════
+8. INSTRUCTIONS DE COMPILATION ET EXÉCUTION
+═══════════════════════════════════════════════════════════════════════════════
+
+Prérequis :
+  • Mozart2 installé
+  • Système : Linux, macOS, ou Windows avec Mozart2
+
+Compilation :
+```bash
+cd /chemin/vers/snoz
+make
+```
+
+Exécution :
+```bash
+make run
+# ou directement :
+ozengine compiled/Main.ozf
+```
+
+Nettoyage :
+```bash
+rm compiled/*.ozf
+```
+
+
+═══════════════════════════════════════════════════════════════════════════════
+9. SPÉCIFICATIONS TECHNIQUES
+═══════════════════════════════════════════════════════════════════════════════
+
+Langage : Mozart/Oz 2.0.1
+Framework Graphique : QTk (Tk pour Mozart)
+Paradigmes : Concurrent, Fonctionnel, Orienté-Objet
+
+Concepts Utilisés :
+  • Ports et Streams pour communication asynchrone
+  • Threads pour concurrence
+  • Records pour structures de données
+  • Cellules pour état mutable
+  • Pattern Matching pour dispatch de messages
+  • Fonctions d'ordre supérieur
+  • Récursion terminale
+
+Performance :
+  • 60 FPS cible pour animations
+  • Support jusqu'à 5 agents simultanés
+  • Gestion optimisée des collisions
+
+
+═══════════════════════════════════════════════════════════════════════════════
+10. CORRECTIONS DE BUGS ET OPTIMISATIONS
+═══════════════════════════════════════════════════════════════════════════════
+
+Bugs Corrigés :
+  ✓ Serpents gelés après collision → Utilisation de teleport() au lieu de despawn/spawn
+  ✓ Agents ne bougeant pas après respawn → Envoi de movedTo après respawn
+  ✓ Fruits apparaissant sur murs → FindValidSpawnPosition avec vérification carte
+  ✓ Double envoi moveTo → changeDirection ne fait que modifier direction
+  ✓ Score joueur non mis à jour → Correction cycle moveTo/movedTo
+
+Optimisations :
+  ✓ Respawn sans recréer agent (teleport)
+  ✓ Validation positions spawn avec retry
+  ✓ Cache du port agent humain pour accès rapide
+  ✓ Broadcast efficace des événements
+
+
+═══════════════════════════════════════════════════════════════════════════════
+FIN DE LA DOCUMENTATION
+═══════════════════════════════════════════════════════════════════════════════
