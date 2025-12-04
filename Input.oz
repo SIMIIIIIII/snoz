@@ -169,18 +169,18 @@ define
         in
             if Acc < Dim*Dim then
                 % Check if on border
-                if Acc < Dim then  % First row
+                if Acc < Dim then
                     Next = 1
-                elseif Acc >= (Dim-1)*Dim then  % Last row
+                elseif Acc >= (Dim-1)*Dim then 
                     Next = 1
-                elseif Acc mod Dim == 0 then  % First column
+                elseif Acc mod Dim == 0 then
                     Next = 1
-                elseif Acc mod Dim == Dim-1 then  % Last column
+                elseif Acc mod Dim == Dim-1 then
                     Next = 1
-                % Check if it's a bot spawn location
+                
                 elseif {IsBotSpawn X Y} then
-                    Next = 0  % Keep spawn locations clear
-                % Randomly place obstacles in interior
+                    Next = 0  
+                
                 else
                     RandVal = {Random} mod 10000
                     Threshold = {FloatToInt ObstacleDensity * 10000.0}

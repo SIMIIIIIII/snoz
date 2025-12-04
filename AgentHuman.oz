@@ -9,7 +9,6 @@ define
     fun {Agent State}
         fun {ChangeDirection changeDirection(NewDir)}
             if State.alive then
-                % Just update direction, MovedTo will send the next moveTo
                 {Agent {Adjoin State state(dir:NewDir)}}
             else
                 {Agent State}

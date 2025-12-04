@@ -457,14 +457,18 @@ define
         % Inputs: X (grid x), Y (grid y)
         % Draws fruit on background and notifies Game Controller
         meth spawnFruit(X Y)
-            {@background copy(FRUIT_SPRITE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(FRUIT_SPRITE 'to': o(PX PY))}
             {Send @gcPort fruitSpawned(X Y)}
         end
 
         % dispawnFruit: Removes a fruit and schedules respawn after 500ms.                  
         % Inputs: X (grid x), Y (grid y)
         meth dispawnFruit(X Y)
-            NewX NewY
+            NewX NewY PX PY
         in
             % Spawn inside playable area (avoid walls at borders)
             NewX = 1 + ({OS.rand} mod (@grid_dim - 2))
@@ -472,7 +476,9 @@ define
             thread
                 {self spawnFruit(NewX NewY)}
             end
-            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            PX = X*32
+            PY = Y*32
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(PX PY))}
             {Send @gcPort fruitDispawned(X Y)}
         end
 
@@ -480,14 +486,22 @@ define
         % Inputs: X (grid x), Y (grid y)
         % Draws rotten fruit on background and notifies Game Controller
         meth spawnRottenFruit(X Y)
-            {@background copy(ROTTEN_FRUIT_SPRITE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(ROTTEN_FRUIT_SPRITE 'to': o(PX PY))}
             {Send @gcPort rottenFruitSpawned(X Y)}
         end
 
         % dispawnRottenFruit: Removes a rotten fruit from the grid.
         % Inputs: X (grid x), Y (grid y)
         meth dispawnRottenFruit(X Y)
-            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(PX PY))}
             {Send @gcPort rottenFruitDispawned(X Y)}
         end
 
@@ -495,14 +509,22 @@ define
         % Inputs: X (grid x), Y (grid y)
         % Draws bonus fruit on background and notifies Game Controller
         meth spawnBonusFruit(X Y)
-            {@background copy(BONUS_FRUIT_SPRITE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(BONUS_FRUIT_SPRITE 'to': o(PX PY))}
             {Send @gcPort bonusFruitSpawned(X Y)}
         end
 
         % dispawnBonusFruit: Removes a bonus fruit from the grid.
         % Inputs: X (grid x), Y (grid y)
         meth dispawnBonusFruit(X Y)
-            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(PX PY))}
             {Send @gcPort bonusFruitDispawned(X Y)}
         end
 
@@ -546,14 +568,22 @@ define
         % Inputs: X (grid x), Y (grid y)
         % Draws shield on background and notifies Game Controller
         meth spawnShield(X Y)
-            {@background copy(SHIELD_SPRITE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(SHIELD_SPRITE 'to': o(PX PY))}
             {Send @gcPort shieldSpawned(X Y)}
         end
 
         % dispawnShield: Removes a shield from the grid.
         % Inputs: X (grid x), Y (grid y)
         meth dispawnShield(X Y)
-            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(PX PY))}
             {Send @gcPort shieldDispawned(X Y)}
         end
 
@@ -580,14 +610,22 @@ define
         % spawnHealthFruit: Spawns a health fruit at the given grid coordinates.
         % Inputs: X (grid x), Y (grid y)
         meth spawnHealthFruit(X Y)
-            {@background copy(HEALTH_FRUIT_SPRITE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(HEALTH_FRUIT_SPRITE 'to': o(PX PY))}
             {Send @gcPort healthFruitSpawned(X Y)}
         end
 
         % dispawnHealthFruit: Removes a health fruit from the grid.
         % Inputs: X (grid x), Y (grid y)
         meth dispawnHealthFruit(X Y)
-            {@background copy(DEFAULT_GROUND_TILE 'to': o(X * 32 Y * 32))}
+            PX PY
+        in
+            PX = X*32
+            PY = Y*32
+            {@background copy(DEFAULT_GROUND_TILE 'to': o(PX PY))}
             {Send @gcPort healthFruitDispawned(X Y)}
         end
 
@@ -658,13 +696,15 @@ define
                 Y = @Z div @grid_dim
                 Rand_n = {OS.rand}
                 Tile_index = (Rand_n mod 3)+1
+                PX = X*32
+                PY = Y*32
             in
                 if K == 0 then
-                    {@background copy({QTk.newImage photo(file: CD # '/assets/ground/ground_' # Tile_index # '.png')} 'to': o(X * 32 Y * 32))}
+                    {@background copy({QTk.newImage photo(file: CD # '/assets/ground/ground_' # Tile_index # '.png')} 'to': o(PX PY))}
                     % Only spawn fruits inside playable area (avoid walls at borders)
                     if X > 0 andthen X < @grid_dim-1 andthen Y > 0 andthen Y < @grid_dim-1 andthen Rand_n mod (((Input.dim-1)*(Input.dim-1)) div 8) == 0 then {self spawnFruit(X Y)} end
                 elseif K == 1 then
-                    {@background copy(WALL_TILE 'to': o(X * 32 Y * 32))}
+                    {@background copy(WALL_TILE 'to': o(PX PY))}
                 end
                 Z := @Z + 1
             end

@@ -1,7 +1,7 @@
 # ----------------------------
-# group number {GROUP_NUMBER}
-# {NOMA1} : {STUDENT1}
-# {NOMA2} : {STUDENT2}
+# group number: 5
+# 12152300 : Sara Tijari
+# 47942300 : Simeon Dikete Lama
 # ----------------------------
 
 UNAME_S := $(shell uname -s)

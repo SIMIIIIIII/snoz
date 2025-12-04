@@ -575,29 +575,52 @@ in
                         NewState = {AdjoinAt State 'tracker' NewTracker}
                         {Broadcast State.tracker movedTo(Id State.tracker.Id.type X Y)}
                     elseif HasPowerup andthen CollidedSnakeId \= none then
-                        % Powered snake kills the other snake and steals their points
-                        local VictimScore KillerNewScore KillerBot KillerTracker TempState1 in
-                            VictimScore = State.tracker.CollidedSnakeId.score
-                            KillerNewScore = State.tracker.Id.score + VictimScore
+                        % Check if victim has shield
+                        local VictimHasShield in
+                            VictimHasShield = {HasFeature State.tracker.CollidedSnakeId 'shield'} andthen State.tracker.CollidedSnakeId.shield
                             
-                            {State.gui dispawnBot(CollidedSnakeId)}
-                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' destroyed ' # ID_to_COLOR.CollidedSnakeId # ' and stole ' # VictimScore # ' points!')}
-                            {Broadcast State.tracker movedTo(CollidedSnakeId State.tracker.CollidedSnakeId.type State.tracker.CollidedSnakeId.x State.tracker.CollidedSnakeId.y)}
-                            {Send State.tracker.CollidedSnakeId.port invalidAction()}
+                            if VictimHasShield then
+                                % Victim's shield blocks the attack
+                                local VictimBot VictimTracker in
+                                    VictimBot = {Adjoin State.tracker.CollidedSnakeId bot(shield:false)}
+                                    VictimTracker = {AdjoinAt State.tracker CollidedSnakeId VictimBot}
+                                    {State.gui deactivateShieldVisual(CollidedSnakeId)}
+                                    {State.gui updateMessageBox(ID_to_COLOR.CollidedSnakeId # ' shield blocked ' # ID_to_COLOR.Id # ' attack!')}
+                                    TempState = {AdjoinAt State 'tracker' VictimTracker}
+                                end
+                            else
+                                % Powered snake kills the other snake and steals their points
+                                local VictimScore KillerNewScore KillerBot KillerTracker TempState1 in
+                                    VictimScore = State.tracker.CollidedSnakeId.score
+                                    KillerNewScore = State.tracker.Id.score + VictimScore
                             
-                            % Update killer's score
-                            KillerBot = {Adjoin State.tracker.Id bot(score:KillerNewScore)}
-                            KillerTracker = {AdjoinAt State.tracker Id KillerBot}
+                                    {State.gui dispawnBot(CollidedSnakeId)}
+                                    {State.gui updateMessageBox(ID_to_COLOR.Id # ' destroyed ' # ID_to_COLOR.CollidedSnakeId # ' and stole ' # VictimScore # ' points!')}
+                                    {Broadcast State.tracker movedTo(CollidedSnakeId State.tracker.CollidedSnakeId.type State.tracker.CollidedSnakeId.x State.tracker.CollidedSnakeId.y)}
+                                    {Send State.tracker.CollidedSnakeId.port invalidAction()}
                             
-                            % Kill the victim
-                            VictimBot = {Adjoin KillerTracker.CollidedSnakeId bot(alive:false)}
-                            VictimTracker = {AdjoinAt KillerTracker CollidedSnakeId VictimBot}
+                                    % Update killer's score
+                                    KillerBot = {Adjoin State.tracker.Id bot(score:KillerNewScore)}
+                                    KillerTracker = {AdjoinAt State.tracker Id KillerBot}
                             
-                            % Update global score and rankings
-                            TempState1 = {AdjoinAt State 'score' State.score + VictimScore}
-                            TempState = {AdjoinAt TempState1 'tracker' VictimTracker}
-                            {State.gui updateScore(State.score + VictimScore)}
-                            {State.gui updateRankings(VictimTracker)}
+                                    % Kill the victim
+                                    VictimBot = {Adjoin KillerTracker.CollidedSnakeId bot(alive:false)}
+                                    VictimTracker = {AdjoinAt KillerTracker CollidedSnakeId VictimBot}
+                            
+                                    % Update global score and rankings
+                                    TempState1 = {AdjoinAt State 'score' State.score + VictimScore}
+                                    TempState = {AdjoinAt TempState1 'tracker' VictimTracker}
+                                    {State.gui updateScore(State.score + VictimScore)}
+                                    {State.gui updateRankings(VictimTracker)}
+                            
+                                    % Check if killer reached 100 points (victory condition)
+                                    if KillerNewScore >= 100 then
+                                        {State.gui updateMessageBox(ID_to_COLOR.Id # ' WINS! Reached 100 points!')}
+                                        {System.showInfo 'Game Over! ' # ID_to_COLOR.Id # ' reached 100 points and wins!'}
+                                        {Application.exit 0}
+                                    end
+                                end
+                            end
                         end
                         
                         % Continue with normal processing for the powered snake (can eat fruits, etc.)
@@ -622,6 +645,13 @@ in
                                         
                                         % Update rankings display
                                         {State.gui updateRankings(UpdatedTracker)}
+
+                                        % Check if player reached 100 points (victory condition)
+                                        if NewBotScore >= 100 then
+                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' WINS! Reached 100 points!')}
+                                            {System.showInfo 'Game Over! ' # ID_to_COLOR.Id # ' reached 100 points and wins!'}
+                                            {Application.exit 0}
+                                        end
 
                                         % Grow snake
                                         {State.gui ateFruit(X Y Id)}
@@ -652,6 +682,13 @@ in
                                         % Update rankings display
                                         {State.gui updateRankings(UpdatedTracker)}
 
+                                        % Check if player reached 100 points (victory condition)
+                                        if NewBotScore >= 100 then
+                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' WINS! Reached 100 points!')}
+                                            {System.showInfo 'Game Over! ' # ID_to_COLOR.Id # ' reached 100 points and wins!'}
+                                            {Application.exit 0}
+                                        end
+
                                         % Grow snake
                                         {State.gui ateBonusFruit(X Y Id)}
 
@@ -672,6 +709,9 @@ in
                                         
                                         % Spawn 2 regular fruits as a reward
                                         {SpawnRegularFruit State.gui State.map}
+                                        
+                                        % Spawn a shield to give other players protection
+                                        {SpawnShield State.gui State.map}
                                         
                                         % Schedule power-up deactivation after 5 seconds in a separate thread
                                         thread
@@ -715,6 +755,13 @@ in
                                         % Update rankings display
                                         {State.gui updateRankings(UpdatedTracker)}
 
+                                        % Check if player reached 100 points (victory condition)
+                                        if NewBotScore >= 100 then
+                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' WINS! Reached 100 points!')}
+                                            {System.showInfo 'Game Over! ' # ID_to_COLOR.Id # ' reached 100 points and wins!'}
+                                            {Application.exit 0}
+                                        end
+
                                         % Grow snake
                                         {State.gui ateFruit(X Y Id)}
 
@@ -747,6 +794,13 @@ in
                                         % Update rankings display
                                         {State.gui updateRankings(UpdatedTracker)}
 
+                                        % Check if player reached 100 points (victory condition)
+                                        if NewBotScore >= 100 then
+                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' WINS! Reached 100 points!')}
+                                            {System.showInfo 'Game Over! ' # ID_to_COLOR.Id # ' reached 100 points and wins!'}
+                                            {Application.exit 0}
+                                        end
+
                                         % Grow snake
                                         {State.gui ateBonusFruit(X Y Id)}
 
@@ -775,13 +829,13 @@ in
                                             UpdatedTracker = {AdjoinAt State.tracker Id UpdatedBot}
                                             TempState1 = {AdjoinAt State 'tracker' UpdatedTracker}
                                             
-                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' gained a life! (' # NewHealth # ' ❤️)')}
+                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' gained a life! (' # NewHealth # ' )')}
                                             {State.gui ateHealthFruit(X Y Id)}
                                             
                                             NewState = TempState1
                                         else
                                             % Déjà à santé max, le fruit disparaît quand même
-                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' health already full (3 ❤️)')}
+                                            {State.gui updateMessageBox(ID_to_COLOR.Id # ' health already full (3)')}
                                             {State.gui dispawnHealthFruit(X Y)}
                                             NewState = State
                                         end
@@ -801,6 +855,9 @@ in
                                         
                                         % Spawn 2 regular fruits as a reward
                                         {SpawnRegularFruit State.gui State.map}
+                                        
+                                        % Spawn a shield to give other players protection
+                                        {SpawnShield State.gui State.map}
                                         
                                         % Schedule power-up deactivation after 5 seconds in a separate thread
                                         thread
